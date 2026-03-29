@@ -4,6 +4,8 @@ Bundle-Name: Refactor_plugin
 Bundle-SymbolicName: refactor_plugin;singleton:=true
 Bundle-Version: 1.0.0.qualifier
 Bundle-Activator: refactor_plugin.Activator
+Bundle-ClassPath: .,
+ lib/gson-2.10.1.jar
 Require-Bundle: org.eclipse.swt,
  org.eclipse.e4.ui.model.workbench,
  org.eclipse.jface,
