@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+
+   <extension point="org.eclipse.ui.commands">
+      <category id="refactor_plugin.category" name="Refactor Plugin Category"/>
+      <command
+            categoryId="refactor_plugin.category"
+            id="refactor_plugin.command"
+            name="Fetch Django JSON">
+      </command>
+   </extension>
+
+   <extension point="org.eclipse.ui.handlers">
+      <handler
+            class="refactor_plugin.handlers.FetchDjangoHandler"
+            commandId="refactor_plugin.command">
+      </handler>
+   </extension>
+
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution locationURI="menu:org.eclipse.ui.main.menu?after=additions">
+         <menu id="refactor_plugin.menu" label="Django API">
+            <command
+                  commandId="refactor_plugin.command"
+                  id="refactor_plugin.menu.command">
+            </command>
+         </menu>
+      </menuContribution>
+      
+      </extension>
+
+   <extension point="org.eclipse.ui.startup">
+      <startup class="refactor_plugin.listeners.EditorDropStartup"/>
+   </extension>
+
+   <extension point="org.eclipse.ui.views">
+      <category
+            id="simplezestproject1.category"
+            name="Zest Graph Views">
+      </category>
+      
+      <view
+            category="simplezestproject1.category"
+            class="view.SimpleView"
+            id="simplezestproject1.partdescriptor.simpleview"
+            name="Simple View"
+            restorable="true">
+      </view>
+      
+      <view
+            category="simplezestproject1.category"
+            class="view.SimpleZestView"
+            id="view.SimpleZestView"
+            name="Simple Zest View"
+            restorable="true">
+      </view>
+   </extension>
+
+   <extension point="org.eclipse.ui.commands">
+      <command
+            categoryId="simplezestproject1.category"
+            id="simplezestproject1.command.cleartext"
+            name="Clear Text">
+      </command>
+   </extension>
+
+   <extension point="org.eclipse.ui.handlers">
+      <handler
+            class="view.handlers.ClearTextHandler"
+            commandId="simplezestproject1.command.cleartext">
+      </handler>
+   </extension>
+
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution locationURI="popup:simplezestproject1.popupmenu.mypopupmenu?after=additions">
+         <command
+               commandId="simplezestproject1.command.cleartext"
+               label="Clear All Text"
+               style="push">
+         </command>
+      </menuContribution>
+   </extension>
+
+
+   <extension point="org.eclipse.ui.commands">
+      <command
+            categoryId="simplezestproject1.category"
+            id="simplezestproject1.command.togglelayout"
+            name="Toggle Layout">
+      </command>
+   </extension>
+
+   <extension point="org.eclipse.ui.handlers">
+      <handler
+            class="view.handlers.SimpleZestHandler"
+            commandId="simplezestproject1.command.togglelayout">
+      </handler>
+   </extension>
+
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution locationURI="toolbar:view.SimpleZestView">
+         <command
+               commandId="simplezestproject1.command.togglelayout"
+               label="Change Layout"
+               style="push">
+         </command>
+      </menuContribution>
+   </extension>
+
+</plugin>
