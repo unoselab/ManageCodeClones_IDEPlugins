@@ -16,6 +16,8 @@ import org.eclipse.zest.core.widgets.GraphNode;
 import org.eclipse.zest.core.widgets.ZestStyles;
 import org.eclipse.zest.layouts.algorithms.SpringLayoutAlgorithm;
 import org.eclipse.zest.layouts.algorithms.TreeLayoutAlgorithm;
+import org.eclipse.draw2d.IFigure;
+import org.eclipse.draw2d.Label;
 
 public class SimpleZestView extends ViewPart {
 
@@ -37,7 +39,7 @@ public class SimpleZestView extends ViewPart {
       graph = new Graph(parent, SWT.NONE); // Graph will hold all other objects
       createGraphNode();
       createConnection(parent);
-      graph.setLayoutAlgorithm(new SpringLayoutAlgorithm(), true);
+      graph.setLayoutAlgorithm(new TreeLayoutAlgorithm(), true);
       addSelectionListener();
    }
 
@@ -63,11 +65,19 @@ public class SimpleZestView extends ViewPart {
       // new GraphConnection(graph, SWT.NONE, clone1, root);
 
       // Change line color and line width
-      graphConnection.changeLineColor(parent.getDisplay().getSystemColor(SWT.COLOR_GREEN));
+      // graphConnection.changeLineColor(parent.getDisplay().getSystemColor(SWT.COLOR_BLACK));
       // Also set a text
       graphConnection.setText("This is a text");
       graphConnection.setHighlightColor(parent.getDisplay().getSystemColor(SWT.COLOR_RED));
-      graphConnection.setLineWidth(3);
+      // graphConnection.setLineWidth(3);
+      IFigure figure = graphConnection.getConnectionFigure();
+      for (Object child : figure.getChildren()) {
+         if (child instanceof Label) {
+            Label label = (Label) child;
+            // Overrides the inherited green line color to make the text black
+            label.setForegroundColor(parent.getDisplay().getSystemColor(SWT.COLOR_BLACK));
+         }
+      }
    }
 
    private void addSelectionListener() {
