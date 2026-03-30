@@ -16,7 +16,6 @@ public class SimpleZestHandler extends AbstractHandler {
    @Override
    public Object execute(ExecutionEvent event) throws ExecutionException {
       try {
-         // Find the view using the Eclipse 3 standard platform UI lookup
          IViewPart findPart = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage().findView(SIMPLEZESTVIEW);
 
          if (findPart instanceof SimpleZestView) {
@@ -24,11 +23,9 @@ public class SimpleZestHandler extends AbstractHandler {
             viewPart.setLayoutManager();
          }
       } catch (Exception e) {
-         // Failsafe in case the workbench window or page is unexpectedly unavailable
          e.printStackTrace();
       }
 
-      // Handlers in e3 must return an Object, typically null
       return null;
    }
 }

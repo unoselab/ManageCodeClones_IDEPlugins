@@ -119,11 +119,11 @@ public class SimpleZestView extends ViewPart {
    public void setLayoutManager() {
       switch (layout) {
       case 1:
-         graph.setLayoutAlgorithm(new TreeLayoutAlgorithm(), true);
+         graph.setLayoutAlgorithm(new TreeLayoutAlgorithm(TreeLayoutAlgorithm.LEFT_RIGHT), true);
          layout++;
          break;
       case 2:
-         graph.setLayoutAlgorithm(new SpringLayoutAlgorithm(), true);
+         graph.setLayoutAlgorithm(new TreeLayoutAlgorithm(TreeLayoutAlgorithm.TOP_DOWN), true);
          layout = 1;
          break;
       }

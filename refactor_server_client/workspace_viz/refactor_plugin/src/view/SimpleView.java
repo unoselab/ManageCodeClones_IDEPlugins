@@ -30,7 +30,6 @@ public class SimpleView extends ViewPart {
       // Register context menu the Eclipse 3 way
       MenuManager menuManager = new MenuManager("Context Menu", POPUPMENU);
 
-      // NEW: Required boilerplate to allow plugin.xml contributions
       menuManager.setRemoveAllWhenShown(true);
       menuManager.addMenuListener(new IMenuListener() {
          @Override
