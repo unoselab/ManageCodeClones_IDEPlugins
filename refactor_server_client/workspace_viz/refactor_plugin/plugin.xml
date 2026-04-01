@@ -66,6 +66,14 @@
 
       <view
             category="simplezestproject1.category"
+            class="view.CloneGraphView"
+            id="view.CloneGraphView"
+            name="Clone Graph"
+            restorable="true">
+      </view>
+
+      <view
+            category="simplezestproject1.category"
             class="view.DropzoneView"
             id="view.DropzoneView"
             name="Dropzone"

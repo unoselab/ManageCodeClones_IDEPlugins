@@ -27,6 +27,7 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
@@ -307,12 +308,27 @@ public class CloneTreeView extends ViewPart {
             setPartName("Clone Tree  (" + records.size() + ")");
             setStatus("Loaded " + records.size() + " clone groups  |  base: " + baseDir);
 
+            refreshCloneGraphIfOpen();
+
         } catch (Exception e) {
             String msg = "Failed to parse:\n" + jsonPath + "\n\n"
                        + e.getClass().getSimpleName() + ": " + e.getMessage();
             setStatus(msg);
             MessageDialog.openError(getSite().getShell(), "Load Error", msg);
         }
+    }
+
+    /** Keeps Clone Graph in sync when JSON is loaded from this view. */
+    private void refreshCloneGraphIfOpen() {
+        try {
+            IWorkbenchPage page = PlatformUI.getWorkbench()
+                    .getActiveWorkbenchWindow().getActivePage();
+            if (page == null) { return; }
+            IViewPart v = page.findView(CloneGraphView.ID);
+            if (v instanceof CloneGraphView cg) {
+                cg.rebuildGraph();
+            }
+        } catch (Exception ignored) { /* workbench not ready */ }
     }
 
     // ── Build in-memory tree ──────────────────────────────────────────────────
