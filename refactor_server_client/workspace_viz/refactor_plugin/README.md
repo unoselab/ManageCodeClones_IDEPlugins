@@ -2,6 +2,10 @@
 
 An Eclipse plug-in (PDE/OSGi) for exploring code-clone results produced offline and applying **pre-computed extract-method refactorings** from a JSON artifact. It complements a text-based **Clone Tree**, a **Zest graph** overview, and a **Dropzone** for drag-and-drop driven workflows inside the Java editor.
 
+![Eclipse runtime: Clone Tree, Clone Graph, Dropzone, and Java editor](../../images/Eclipes-refractor-plugin.png)
+
+*Runtime workbench with clone data loaded: tree and graph views plus Dropzone alongside the source editor.*
+
 ---
 
 ## Features
