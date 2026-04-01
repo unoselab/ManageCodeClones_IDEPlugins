@@ -39,7 +39,7 @@
             id="simplezestproject1.category"
             name="Zest Graph Views">
       </category>
-      
+
       <view
             category="simplezestproject1.category"
             class="view.SimpleView"
@@ -47,12 +47,28 @@
             name="Simple View"
             restorable="true">
       </view>
-      
+
       <view
             category="simplezestproject1.category"
             class="view.SimpleZestView"
             id="view.SimpleZestView"
             name="Simple Zest View"
+            restorable="true">
+      </view>
+
+      <view
+            category="simplezestproject1.category"
+            class="view.CloneTreeView"
+            id="view.CloneTreeView"
+            name="Clone Tree"
+            restorable="true">
+      </view>
+
+      <view
+            category="simplezestproject1.category"
+            class="view.DropzoneView"
+            id="view.DropzoneView"
+            name="Dropzone"
             restorable="true">
       </view>
    </extension>

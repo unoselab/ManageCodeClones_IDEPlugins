@@ -1,22 +1,27 @@
 package refactor_plugin;
 
-import org.osgi.framework.BundleActivator;
+import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
-public class Activator implements BundleActivator {
+public class Activator extends AbstractUIPlugin {
 
-	private static BundleContext context;
+	public static final String PLUGIN_ID = "refactor_plugin";
 
-	static BundleContext getContext() {
-		return context;
+	private static Activator plugin;
+
+	@Override
+	public void start(BundleContext context) throws Exception {
+		super.start(context);
+		plugin = this;
 	}
 
-	public void start(BundleContext bundleContext) throws Exception {
-		Activator.context = bundleContext;
+	@Override
+	public void stop(BundleContext context) throws Exception {
+		plugin = null;
+		super.stop(context);
 	}
 
-	public void stop(BundleContext bundleContext) throws Exception {
-		Activator.context = null;
+	public static Activator getDefault() {
+		return plugin;
 	}
-
 }
