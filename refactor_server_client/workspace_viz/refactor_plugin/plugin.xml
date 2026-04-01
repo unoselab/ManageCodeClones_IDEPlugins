@@ -11,12 +11,37 @@
       </command>
    </extension>
 
+   <extension point="org.eclipse.ui.commands">
+      <category
+            id="refactor_plugin.category"
+            name="Refactor Plugin Category"/>
+      <command
+            id="refactor_plugin.command.readA"
+            name="Command Action 01"
+            categoryId="refactor_plugin.category"/>
+      <command
+            id="refactor_plugin.command.extractMethod"
+            name="Command Action 02 (EM)"
+            categoryId="refactor_plugin.category"/>            
+   </extension>
+
    <extension point="org.eclipse.ui.handlers">
       <handler
             class="refactor_plugin.handlers.FetchDjangoHandler"
             commandId="refactor_plugin.command">
       </handler>
+      <handler
+            class="refactor_plugin.handlers.ExtractMethodHandler"
+            commandId="refactor_plugin.command.extractMethod">
+      </handler>      
    </extension>
+
+   <extension point="org.eclipse.ui.handlers">
+      <handler
+            class="refactor_plugin.handlers.MainIOHandler"
+            commandId="refactor_plugin.command.readA">
+      </handler>
+   </extension>   
 
    <extension point="org.eclipse.ui.menus">
       <menuContribution locationURI="menu:org.eclipse.ui.main.menu?after=additions">
@@ -27,8 +52,26 @@
             </command>
          </menu>
       </menuContribution>
-      
-      </extension>
+   </extension>
+
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution locationURI="menu:org.eclipse.ui.main.menu?after=additions">
+         <menu id="refactor_plugin.menu" label="Django API">
+            <command
+                  commandId="refactor_plugin.command.readA"
+                  id="refactor_plugin.menu.command.readA"
+                  label="Command Action 01"
+                  style="push">
+            </command>
+            <command
+                  commandId="refactor_plugin.command.extractMethod"
+                  id="refactor_plugin.menu.command.extractMethod"
+                  label="Command Action 02 (EM)"
+                  style="push">
+            </command>            
+         </menu>
+      </menuContribution>
+   </extension>
 
    <extension point="org.eclipse.ui.startup">
       <startup class="refactor_plugin.listeners.EditorDropStartup"/>
