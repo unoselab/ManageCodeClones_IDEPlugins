@@ -20,14 +20,20 @@ import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ui.handlers.HandlerUtil;
 
+import org.eclipse.jdt.core.IMethod;
+import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.ui.JavaUI;
+import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.texteditor.ITextEditor;
+
 public class ExtractMethodHandler extends AbstractHandler {
 
    // Let us assume that we have this file location from the previous workflow step (JSON loading).
-   private final String targetRelativePath = "org/apache/A.java";
-
    // Let us assume that we already know the extraction location from the previous workflow step.
-   private final int extractStartLine = 6;
-   private final int extractEndLine = 8;
+   // private final String targetRelativePath = "org/apache/A.java";
+   private final String targetRelativePath = "org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java";
+   private final int extractStartLine = 316; // 6;
+   private final int extractEndLine = 335; // 8;
 
    // Let us assume that we already know the new method name from the previous workflow step.
    private final String extractedMethodName = "extractedM1Block";
@@ -76,7 +82,47 @@ public class ExtractMethodHandler extends AbstractHandler {
       Change change = refactoring.createChange(new NullProgressMonitor());
       change.perform(new NullProgressMonitor());
 
-      showMessage(event, "Success", "Extract Method refactoring was applied successfully." + "\nFile: " + targetRelativePath + "\nExtracted lines: " + extractStartLine + "-" + extractEndLine + "\nNew method name: " + extractedMethodName);
+      // Let us refresh/reconcile the compilation unit after the refactoring change.
+      compilationUnit.reconcile(ICompilationUnit.NO_AST, false, null, null);
+
+      // Let us move the cursor to the extracted method in the Java editor.
+      revealExtractedMethod(compilationUnit);
+
+      System.out.println("Success: Extract Method refactoring was applied successfully." + //
+            "\nFile: " + targetRelativePath + "\nExtracted lines: " + //
+            extractStartLine + "-" + extractEndLine + "\nNew method name: " + extractedMethodName);
+   }
+
+   private void revealExtractedMethod(ICompilationUnit compilationUnit) throws Exception {
+      IMethod extractedMethod = findExtractedMethod(compilationUnit);
+      if (extractedMethod == null || !extractedMethod.exists()) {
+         return;
+      }
+
+      IEditorPart editor = JavaUI.openInEditor(compilationUnit);
+      JavaUI.revealInEditor(editor, (IJavaElement) extractedMethod);
+      if (editor instanceof ITextEditor) {
+         ITextEditor textEditor = (ITextEditor) editor;
+
+         // Put the key cursor on the method name if possible.
+         if (extractedMethod.getNameRange() != null) {
+            textEditor.selectAndReveal(extractedMethod.getNameRange().getOffset(), extractedMethod.getNameRange().getLength());
+         }
+         else {
+            textEditor.selectAndReveal(extractedMethod.getSourceRange().getOffset(), 0);
+         }
+      }
+   }
+
+   private IMethod findExtractedMethod(ICompilationUnit compilationUnit) throws Exception {
+      for (IType type : compilationUnit.getAllTypes()) {
+         for (IMethod method : type.getMethods()) {
+            if (extractedMethodName.equals(method.getElementName())) {
+               return method;
+            }
+         }
+      }
+      return null;
    }
 
    private SourceRange computeSourceRange(ICompilationUnit compilationUnit, int startLine, int endLine) throws Exception {
