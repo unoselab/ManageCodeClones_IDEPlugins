@@ -3,6 +3,14 @@ package refactor_plugin.util;
 /**
  * Wraps a dropped code snippet inside a method/function definition.
  * Mirrors the wrapInMethod() + normalizeBodyLines() helpers in extension.ts.
+ * <p>
+ * <strong>How this differs from Command Action 02 (EM) and {@link CloneRefactoring}:</strong>
+ * the Dropzone payload is often the <em>same</em> source text as the clone region EM works on,
+ * but the user may drop it at <em>any</em> offset. {@code WrapHelper} inserts a <em>new</em>
+ * enclosing method at that drop offset and re-indents the body &mdash; it does not perform
+ * JDT Extract Method and does not update other clone sites. For Java, the editor listener
+ * normally tries insert-at-drop + JDT extract first; this class is the fallback when JDT is
+ * unavailable or the language is not Java.
  */
 public class WrapHelper {
 

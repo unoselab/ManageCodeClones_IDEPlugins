@@ -31,12 +31,21 @@ import refactor_plugin.dnd.DropzoneTransfer;
  *
  * Users collect code snippets here (via the "Add from Editor Selection" toolbar
  * button or by dragging text onto the list), then drag a snippet from this view
- * onto any open editor to trigger either:
+ * onto any open editor. There is no minimum selection size; JDT Extract Method
+ * may still reject very small or partial fragments (&quot;selection is not valid&quot;).
+ * Prefer a complete statement sequence (e.g. a whole loop). Then either:
  *
  *   • Clone-aware path  — if the target file was opened from the CloneTreeView,
  *                         EditorDropStartup applies the pre-computed Extract Method.
- *   • Generic-wrap path — otherwise, prompts for a method name and inserts the
- *                         snippet wrapped in a method definition.
+ *   • Generic Java — insert at the <em>drop offset</em> then JDT Extract Method on that span
+ *                    (single-site) when the snippet does not match the demo clone bodies. On the
+ *                    ExportQuarkus demo file, if the snippet matches those clones, Command
+ *                    Action 02 (same two-site {@code applyWithLineRanges} as the menu) runs;
+ *                    the snippet is not inserted; the extracted method is then moved to the
+ *                    line where the user dropped. Cancel aborts with no paste.
+ *                    Otherwise wrap with {@link refactor_plugin.util.WrapHelper}.
+ *   • Editor-to-editor drag — {@link refactor_plugin.listeners.EditorDropStartup} can offer the
+ *                    same JDT extract after a plain text drop (IFile Java editors).
  *
  * Mirrors the DropzoneProvider class in the VS Code extension's extension.ts.
  */

@@ -27,7 +27,6 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.ui.IEditorPart;
-import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
@@ -44,9 +43,9 @@ import refactor_plugin.model.CloneRecord.CloneSource;
 /**
  * Sidebar tree view that displays all clone groups.
  *
- * On startup it automatically looks for all_refactor_results.json in the
- * Eclipse workspace root (runtime-refactor_plugin/).  The toolbar "Load…"
- * button lets the user pick a different file at any time.
+ * On startup it looks for {@code all_refactor_results.json} under
+ * {@code runtime-refactor_plugin/systems/} (see {@link CloneContext#DEFAULT_CLONE_JSON}).
+ * The toolbar "Load…" button picks another file if needed.
  *
  * File paths in the JSON are relative to the workspace root and are resolved
  * via CloneContext.resolvePath() before opening or refactoring.
@@ -184,30 +183,26 @@ public class CloneTreeView extends ViewPart {
         Action loadAction = new Action("Load Clone Data…") {
             @Override public void run() { browseAndLoad(); }
         };
-        loadAction.setToolTipText("Open all_refactor_results.json (auto-loaded from workspace root on startup)");
+        loadAction.setToolTipText("Open all_refactor_results.json (auto-loaded from runtime-refactor_plugin/systems on startup)");
         tbm.add(loadAction);
     }
 
     // ── Auto-load from workspace root ─────────────────────────────────────────
 
     /**
-     * Tries to locate all_refactor_results.json automatically.
-     * Checks the Eclipse workspace root first, then a fixed known path as fallback.
-     * Shows a clear status message in the view so the user always knows what happened.
+     * Tries {@link CloneContext#DEFAULT_CLONE_JSON}, then JSON at
+     * {@code runtime-refactor_plugin/} root (legacy).
      */
     private void autoLoad() {
         // Do NOT use ResourcesPlugin here — it may throw NoClassDefFoundError
         // if org.eclipse.core.resources hasn't fully activated yet.
         // Instead, probe the filesystem directly using known absolute paths.
         try {
-            String base = "/Users/dreamxia/2025_Dr.Song/ManageCodeClones_IDEPlugins"
-                        + "/refactor_server_client/runtime-refactor_plugin";
+            String base = CloneContext.RUNTIME_REFACTOR_PLUGIN_ROOT;
 
-            // Check every likely location for the JSON file
             String[][] candidates = {
-                // { jsonPath, workspaceRoot }
-                { base + "/systems/" + JSON_NAME, base },
-                { base + "/" + JSON_NAME,          base },
+                { CloneContext.DEFAULT_CLONE_JSON, base },
+                { base + "/" + JSON_NAME, base },
             };
 
             for (String[] pair : candidates) {
@@ -220,9 +215,9 @@ public class CloneTreeView extends ViewPart {
             }
 
             setStatus("'" + JSON_NAME + "' not found automatically.\n"
-                    + "Checked:\n"
-                    + "  " + base + "/systems/" + JSON_NAME + "\n"
-                    + "  " + base + "/" + JSON_NAME + "\n\n"
+                    + "Expected:\n"
+                    + "  " + CloneContext.DEFAULT_CLONE_JSON + "\n"
+                    + "  (or " + base + "/" + JSON_NAME + ")\n\n"
                     + "Click 'Load Clone Data…' to pick it manually.");
 
         } catch (Throwable t) {
@@ -247,9 +242,7 @@ public class CloneTreeView extends ViewPart {
         dlg.setFilterNames(new String[]{"JSON files", "All files"});
         dlg.setFilterExtensions(new String[]{"*.json", "*.*"});
 
-        // Pre-open to the known workspace root
-        dlg.setFilterPath("/Users/dreamxia/2025_Dr.Song/ManageCodeClones_IDEPlugins"
-                + "/refactor_server_client/runtime-refactor_plugin");
+        dlg.setFilterPath(CloneContext.SYSTEMS_DIR);
 
         setStatus("Opening file chooser …");
         String path = dlg.open();
@@ -258,10 +251,7 @@ public class CloneTreeView extends ViewPart {
             return;
         }
 
-        // Base dir for resolving relative source paths is always runtime-refactor_plugin/
-        String base = "/Users/dreamxia/2025_Dr.Song/ManageCodeClones_IDEPlugins"
-                    + "/refactor_server_client/runtime-refactor_plugin";
-        loadFromPath(path, base);
+        loadFromPath(path, CloneContext.workspaceRootForCloneJson(path));
     }
 
     // ── Core load logic ───────────────────────────────────────────────────────
@@ -320,15 +310,7 @@ public class CloneTreeView extends ViewPart {
 
     /** Keeps Clone Graph in sync when JSON is loaded from this view. */
     private void refreshCloneGraphIfOpen() {
-        try {
-            IWorkbenchPage page = PlatformUI.getWorkbench()
-                    .getActiveWorkbenchWindow().getActivePage();
-            if (page == null) { return; }
-            IViewPart v = page.findView(CloneGraphView.ID);
-            if (v instanceof CloneGraphView cg) {
-                cg.rebuildGraph();
-            }
-        } catch (Exception ignored) { /* workbench not ready */ }
+        CloneGraphView.refreshIfOpen();
     }
 
     // ── Build in-memory tree ──────────────────────────────────────────────────

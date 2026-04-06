@@ -15,7 +15,6 @@ import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.text.IDocument;
-import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PlatformUI;
@@ -31,7 +30,14 @@ import refactor_plugin.model.CloneRecord.UpdatedFile;
 /**
  * Applies a pre-computed "Extract Method" refactoring for a clone group.
  * Mirrors applyPrecomputedRefactoring() in extension.ts.
- *
+ * <p>
+ * <strong>Not driven by drop coordinates:</strong> all edits come from JSON
+ * {@code sources[].range}, {@code replacement_code}, and optional {@code extracted_method}.
+ * The user never chooses the insert offset. That contrasts with Dropzone &rarr; editor, where
+ * {@link refactor_plugin.listeners.EditorDropStartup} uses {@code resolveDropOffset} for
+ * insert-at-drop + JDT, or &mdash; on the ExportQuarkus demo &mdash; optional Command Action 02
+ * at existing clone lines when the dropped text matches those clones.
+ * <p>
  * Key invariant (mirrors the VS Code implementation):
  *   All document offsets are computed from the PRISTINE document BEFORE any
  *   edits are made.  Edits are then applied in DESCENDING offset order so that
@@ -54,7 +60,7 @@ public class CloneRefactoring {
      * edits from the pristine document, then applies them highest-offset-first.
      * Must be called on the UI thread.
      */
-    public static void apply(Shell shell, CloneRecord record) {
+    public static void apply(org.eclipse.swt.widgets.Shell shell, CloneRecord record) {
         if (record.sources == null || record.sources.isEmpty()) { return; }
 
         // Group sources by resolved absolute file path so each file is opened once.
@@ -90,7 +96,7 @@ public class CloneRefactoring {
 
     // ── apply all edits for one file ──────────────────────────────────────────
 
-    private static void applyToFile(Shell shell, String absFile,
+    private static void applyToFile(org.eclipse.swt.widgets.Shell shell, String absFile,
                                      List<CloneSource> sources,
                                      ExtractedMethod em) {
         try {

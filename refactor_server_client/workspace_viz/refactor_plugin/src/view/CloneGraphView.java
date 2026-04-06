@@ -24,6 +24,7 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
@@ -107,6 +108,36 @@ public class CloneGraphView extends ViewPart {
 
         contributeToolbar();
         rebuildGraph();
+        // Second pass: recordMap may be filled by startup auto-load or Clone Tree
+        // after this view is created; refresh once the UI loop runs.
+        getSite().getShell().getDisplay().asyncExec(() -> {
+            if (graph != null && !graph.isDisposed()) {
+                rebuildGraph();
+            }
+        });
+    }
+
+    /** If the Clone Graph part is open, rebuild it (e.g. after JSON load elsewhere). */
+    public static void refreshIfOpen() {
+        try {
+            if (PlatformUI.getWorkbench() == null) {
+                return;
+            }
+            var win = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+            if (win == null) {
+                return;
+            }
+            IWorkbenchPage page = win.getActivePage();
+            if (page == null) {
+                return;
+            }
+            IViewPart v = page.findView(CloneGraphView.ID);
+            if (v instanceof CloneGraphView cg) {
+                cg.rebuildGraph();
+            }
+        } catch (Exception ignored) {
+            /* workbench not ready */
+        }
     }
 
     private void contributeToolbar() {

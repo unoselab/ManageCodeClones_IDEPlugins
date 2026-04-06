@@ -39,4 +39,13 @@ public class DropzoneTransfer extends ByteArrayTransfer {
             return new String(bytes, "UTF-8");
         } catch (java.io.UnsupportedEncodingException e) { return null; }
     }
+
+    /**
+     * Public bridge so drop targets can test {@code event.currentDataType} (same pattern as
+     * {@link org.eclipse.swt.dnd.TextTransfer#getInstance()}).
+     */
+    @Override
+    public boolean isSupportedType(TransferData transferData) {
+        return super.isSupportedType(transferData);
+    }
 }

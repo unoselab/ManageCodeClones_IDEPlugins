@@ -27,7 +27,7 @@
     "sources": [
       {
         "func_id": "camel_2720_2658",
-        "file": "systems/camel-java/dsl/camel-jbang/camel-jbang-core/src/main/java/org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java",
+        "file": "systems/camel-java/org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java",
         "range": "316-335",
         "nlines": 20,
         "code": "        for (String dep : deps) {\n            MavenGav gav = parseMavenGav(dep);\n            String gid = gav.getGroupId();\n            String aid = gav.getArtifactId();\n            // transform to camel-quarkus extension GAV\n            if (\"org.apache.camel\".equals(gid)) {\n                String qaid = aid.replace(\"camel-\", \"camel-quarkus-\");\n                ArtifactModel<?> am = catalog.modelFromMavenGAV(\"org.apache.camel.quarkus\", qaid, null);\n                if (am != null) {\n                    // use quarkus extension\n                    gav.setGroupId(am.getGroupId());\n                    gav.setArtifactId(am.getArtifactId());\n                    gav.setVersion(null); // uses BOM so version should not be included\n                } else {\n                    // there is no quarkus extension so use plain camel\n                    gav.setVersion(camelVersion);\n                }\n            }\n            gavs.add(gav);\n        }",
@@ -45,7 +45,7 @@
       },
       {
         "func_id": "camel_2720_2660",
-        "file": "systems/camel-java/dsl/camel-jbang/camel-jbang-core/src/main/java/org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java",
+        "file": "systems/camel-javaorg/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java",
         "range": "476-495",
         "nlines": 20,
         "code": "        for (String dep : deps) {\n            MavenGav gav = parseMavenGav(dep);\n            String gid = gav.getGroupId();\n            String aid = gav.getArtifactId();\n            // transform to camel-quarkus extension GAV\n            if (\"org.apache.camel\".equals(gid)) {\n                String qaid = aid.replace(\"camel-\", \"camel-quarkus-\");\n                ArtifactModel<?> am = catalog.modelFromMavenGAV(\"org.apache.camel.quarkus\", qaid, null);\n                if (am != null) {\n                    // use quarkus extension\n                    gav.setGroupId(am.getGroupId());\n                    gav.setArtifactId(am.getArtifactId());\n                    gav.setVersion(null); // uses BOM so version should not be included\n                } else {\n                    // there is no quarkus extension so use plain camel\n                    gav.setVersion(camelVersion);\n                }\n            }\n            gavs.add(gav);\n        }",
@@ -60,13 +60,6 @@
           "extracted_method_signature": "private void extracted(Set<String> deps, CamelCatalog catalog, List<MavenGav> gavs)",
           "extracted_method_code": "private void extracted(Set<String> deps, CamelCatalog catalog, List<MavenGav> gavs) {\n        for (String dep : deps) {\n            MavenGav gav = parseMavenGav(dep);\n            String gid = gav.getGroupId();\n            String aid = gav.getArtifactId();\n            // transform to camel-quarkus extension GAV\n            if (\"org.apache.camel\".equals(gid)) {\n                String qaid = aid.replace(\"camel-\", \"camel-quarkus-\");\n                ArtifactModel<?> am = catalog.modelFromMavenGAV(\"org.apache.camel.quarkus\", qaid, null);\n                if (am != null) {\n                    // use quarkus extension\n                    gav.setGroupId(am.getGroupId());\n                    gav.setArtifactId(am.getArtifactId());\n                    gav.setVersion(null); // uses BOM so version should not be included\n                } else {\n                    // there is no quarkus extension so use plain camel\n                    gav.setVersion(camelVersion);\n                }\n            }\n            gavs.add(gav);\n        }\n    }"
         }
-      }
-    ],
-    "updated_files": [
-      {
-        "file": "systems/camel-java/dsl/camel-jbang/camel-jbang-core/src/main/java/org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java",
-        "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/camel_2720_2658_vs_camel_2720_2660/systems/camel-java/dsl/camel-jbang/camel-jbang-core/src/main/java/org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java"
       }
     ]
   },
@@ -98,7 +91,7 @@
     "sources": [
       {
         "func_id": "hive_1516_1388",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "range": "405-414",
         "nlines": 10,
         "code": "    case TIMESTAMP: {\n      TimestampColumnVector lcv = (TimestampColumnVector) batch.cols[offset + colIndex];\n      if (writableCol != null) {\n        lcv.set(rowIndex, ((TimestampWritableV2) writableCol).getTimestamp().toSqlTimestamp());\n        lcv.isNull[rowIndex] = false;\n      } else {\n        lcv.setNullValue(rowIndex);\n        setNullColIsNullValue(lcv, rowIndex);\n      }\n    }",
@@ -116,7 +109,7 @@
       },
       {
         "func_id": "hive_1516_1389",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "range": "350-359",
         "nlines": 10,
         "code": "    case INT: {\n      LongColumnVector lcv = (LongColumnVector) batch.cols[offset + colIndex];\n      if (writableCol != null) {\n        lcv.vector[rowIndex] = ((IntWritable) writableCol).get();\n        lcv.isNull[rowIndex] = false;\n      } else {\n        lcv.vector[rowIndex] = 1;\n        setNullColIsNullValue(lcv, rowIndex);\n      }\n    }",
@@ -135,9 +128,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/hive_1516_1388_vs_hive_1516_1389/systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java"
+        "rewritten_file_path": "data/refactor_out/hive_1516_1388_vs_hive_1516_1389/systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java"
       }
     ]
   },
@@ -167,7 +160,7 @@
     "sources": [
       {
         "func_id": "tomcat_427_360",
-        "file": "systems/tomcat-java/java/org/apache/jasper/EmbeddedServletOptions.java",
+        "file": "systems/tomcat-java/org/apache/jasper/EmbeddedServletOptions.java",
         "range": "492-502",
         "nlines": 11,
         "code": "        if (keepgen != null) {\n            if (keepgen.equalsIgnoreCase(\"true\")) {\n                this.keepGenerated = true;\n            } else if (keepgen.equalsIgnoreCase(\"false\")) {\n                this.keepGenerated = false;\n            } else {\n                if (log.isWarnEnabled()) {\n                    log.warn(Localizer.getMessage(\"jsp.warning.keepgen\"));\n                }\n            }\n        }",
@@ -185,7 +178,7 @@
       },
       {
         "func_id": "tomcat_427_362",
-        "file": "systems/tomcat-java/java/org/apache/jasper/EmbeddedServletOptions.java",
+        "file": "systems/tomcat-java/org/apache/jasper/EmbeddedServletOptions.java",
         "range": "542-552",
         "nlines": 11,
         "code": "        if (debugInfo != null) {\n            if (debugInfo.equalsIgnoreCase(\"true\")) {\n                this.classDebugInfo = true;\n            } else if (debugInfo.equalsIgnoreCase(\"false\")) {\n                this.classDebugInfo = false;\n            } else {\n                if (log.isWarnEnabled()) {\n                    log.warn(Localizer.getMessage(\"jsp.warning.classDebugInfo\"));\n                }\n            }\n        }",
@@ -204,7 +197,7 @@
     ],
     "updated_files": [
       {
-        "file": "systems/tomcat-java/java/org/apache/jasper/EmbeddedServletOptions.java",
+        "file": "systems/tomcat-java/org/apache/jasper/EmbeddedServletOptions.java",
         "inserted_extracted_method": true,
         "rewritten_file_path": "data/refactor_out/tomcat_427_360_vs_tomcat_427_362/systems/tomcat-java/java/org/apache/jasper/EmbeddedServletOptions.java"
       }
@@ -243,7 +236,7 @@
     "sources": [
       {
         "func_id": "pig_775_1153",
-        "file": "systems/pig-java/src/org/apache/pig/pen/AugmentBaseDataVisitor.java",
+        "file": "systems/pig-java/org/apache/pig/pen/AugmentBaseDataVisitor.java",
         "range": "1102-1113",
         "nlines": 12,
         "code": "            } else if (pred instanceof NotEqualExpression) {\n                if (leftIsConst) {\n                    t.set(rightCol, generateData(rightDataType, leftConst\n                            .toString()));\n                } else if (rightIsConst) {\n                    t.set(leftCol, generateData(leftDataType, rightConst\n                            .toString()));\n                } else {\n                    t.set(leftCol, generateData(leftDataType, \"0\"));\n                    t.set(rightCol, generateData(rightDataType, \"0\"));\n                }\n            } else if (pred instanceof GreaterThanExpression",
@@ -261,7 +254,7 @@
       },
       {
         "func_id": "pig_775_1154",
-        "file": "systems/pig-java/src/org/apache/pig/pen/AugmentBaseDataVisitor.java",
+        "file": "systems/pig-java/org/apache/pig/pen/AugmentBaseDataVisitor.java",
         "range": "1114-1125",
         "nlines": 12,
         "code": "                    || pred instanceof GreaterThanEqualExpression) {\n                if (leftIsConst) {\n                    t.set(rightCol, generateData(rightDataType, GetLargerValue(\n                            leftConst).toString()));\n                } else if (rightIsConst) {\n                    t.set(leftCol, generateData(leftDataType, GetSmallerValue(\n                            rightConst).toString()));\n                } else {\n                    t.set(leftCol, generateData(leftDataType, \"0\"));\n                    t.set(rightCol, generateData(rightDataType, \"1\"));\n                }\n            } else if (pred instanceof LessThanExpression",
@@ -280,7 +273,7 @@
     ],
     "updated_files": [
       {
-        "file": "systems/pig-java/src/org/apache/pig/pen/AugmentBaseDataVisitor.java",
+        "file": "systems/pig-java/org/apache/pig/pen/AugmentBaseDataVisitor.java",
         "inserted_extracted_method": true,
         "rewritten_file_path": "data/refactor_out/pig_775_1153_vs_pig_775_1154/systems/pig-java/src/org/apache/pig/pen/AugmentBaseDataVisitor.java"
       }
@@ -312,7 +305,7 @@
     "sources": [
       {
         "func_id": "maven_265_433",
-        "file": "systems/maven-java/impl/maven-executor/src/main/java/org/apache/maven/cling/executor/forked/ForkedMavenExecutor.java",
+        "file": "systems/maven-java/org/apache/maven/cling/executor/forked/ForkedMavenExecutor.java",
         "range": "178-188",
         "nlines": 11,
         "code": "        Thread stdoutPump = new Thread(() -> {\n            try {\n                OutputStream stdout = executorRequest.stdOut().orElse(OutputStream.nullOutputStream());\n                p.getInputStream().transferTo(stdout);\n                stdout.flush();\n            } catch (IOException e) {\n                throw new UncheckedIOException(e);\n            } finally {\n                latch.countDown();\n            }\n        });",
@@ -330,7 +323,7 @@
       },
       {
         "func_id": "maven_265_434",
-        "file": "systems/maven-java/impl/maven-executor/src/main/java/org/apache/maven/cling/executor/forked/ForkedMavenExecutor.java",
+        "file": "systems/maven-java/org/apache/maven/cling/executor/forked/ForkedMavenExecutor.java",
         "range": "191-201",
         "nlines": 11,
         "code": "        Thread stderrPump = new Thread(() -> {\n            try {\n                OutputStream stderr = executorRequest.stdErr().orElse(OutputStream.nullOutputStream());\n                p.getErrorStream().transferTo(stderr);\n                stderr.flush();\n            } catch (IOException e) {\n                throw new UncheckedIOException(e);\n            } finally {\n                latch.countDown();\n            }\n        });",
@@ -349,9 +342,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/maven-java/impl/maven-executor/src/main/java/org/apache/maven/cling/executor/forked/ForkedMavenExecutor.java",
+        "file": "systems/maven-java/org/apache/maven/cling/executor/forked/ForkedMavenExecutor.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/maven_265_433_vs_maven_265_434/systems/maven-java/impl/maven-executor/src/main/java/org/apache/maven/cling/executor/forked/ForkedMavenExecutor.java"
+        "rewritten_file_path": "data/refactor_out/maven_265_433_vs_maven_265_434/systems/maven-java/org/apache/maven/cling/executor/forked/ForkedMavenExecutor.java"
       }
     ]
   },
@@ -383,7 +376,7 @@
     "sources": [
       {
         "func_id": "hive_1516_1383",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "range": "317-326",
         "nlines": 10,
         "code": "    case BOOLEAN: {\n      LongColumnVector lcv = (LongColumnVector) batch.cols[offset + colIndex];\n      if (writableCol != null) {\n        lcv.vector[rowIndex] = ((BooleanWritable) writableCol).get() ? 1 : 0;\n        lcv.isNull[rowIndex] = false;\n      } else {\n        lcv.vector[rowIndex] = 1;\n        setNullColIsNullValue(lcv, rowIndex);\n      }\n    }",
@@ -401,7 +394,7 @@
       },
       {
         "func_id": "hive_1516_1389",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "range": "350-359",
         "nlines": 10,
         "code": "    case INT: {\n      LongColumnVector lcv = (LongColumnVector) batch.cols[offset + colIndex];\n      if (writableCol != null) {\n        lcv.vector[rowIndex] = ((IntWritable) writableCol).get();\n        lcv.isNull[rowIndex] = false;\n      } else {\n        lcv.vector[rowIndex] = 1;\n        setNullColIsNullValue(lcv, rowIndex);\n      }\n    }",
@@ -420,9 +413,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/hive_1516_1383_vs_hive_1516_1389/systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java"
+        "rewritten_file_path": "data/refactor_out/hive_1516_1383_vs_hive_1516_1389/systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java"
       }
     ]
   },
@@ -454,7 +447,7 @@
     "sources": [
       {
         "func_id": "hive_1516_1383",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "range": "317-326",
         "nlines": 10,
         "code": "    case BOOLEAN: {\n      LongColumnVector lcv = (LongColumnVector) batch.cols[offset + colIndex];\n      if (writableCol != null) {\n        lcv.vector[rowIndex] = ((BooleanWritable) writableCol).get() ? 1 : 0;\n        lcv.isNull[rowIndex] = false;\n      } else {\n        lcv.vector[rowIndex] = 1;\n        setNullColIsNullValue(lcv, rowIndex);\n      }\n    }",
@@ -472,7 +465,7 @@
       },
       {
         "func_id": "hive_1516_1391",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "range": "361-370",
         "nlines": 10,
         "code": "    case LONG: {\n      LongColumnVector lcv = (LongColumnVector) batch.cols[offset + colIndex];\n      if (writableCol != null) {\n        lcv.vector[rowIndex] = ((LongWritable) writableCol).get();\n        lcv.isNull[rowIndex] = false;\n      } else {\n        lcv.vector[rowIndex] = 1;\n        setNullColIsNullValue(lcv, rowIndex);\n      }\n    }",
@@ -491,9 +484,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/hive_1516_1383_vs_hive_1516_1391/systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java"
+        "rewritten_file_path": "data/refactor_out/hive_1516_1383_vs_hive_1516_1391/systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedBatchUtil.java"
       }
     ]
   },
@@ -521,7 +514,7 @@
     "sources": [
       {
         "func_id": "cxf_976_1492",
-        "file": "systems/cxf-java/rt/wsdl/src/main/java/org/apache/cxf/wsdl/service/factory/ReflectionServiceFactoryBean.java",
+        "file": "systems/cxf-java/org/apache/cxf/wsdl/service/factory/ReflectionServiceFactoryBean.java",
         "range": "553-562",
         "nlines": 10,
         "code": "                if (opInfo.hasOutput()) {\n                    for (MessagePartInfo mpi : opInfo.getOutput().getMessageParts()) {\n                        assert mpi.getXmlSchema() != null;\n                        if (mpi.isElement()) {\n                            assert mpi.getXmlSchema() instanceof XmlSchemaElement;\n                        } else {\n                            assert !(mpi.getXmlSchema() instanceof XmlSchemaElement);\n                        }\n                    }\n                }",
@@ -539,7 +532,7 @@
       },
       {
         "func_id": "cxf_976_1493",
-        "file": "systems/cxf-java/rt/wsdl/src/main/java/org/apache/cxf/wsdl/service/factory/ReflectionServiceFactoryBean.java",
+        "file": "systems/cxf-java/org/apache/cxf/wsdl/service/factory/ReflectionServiceFactoryBean.java",
         "range": "573-582",
         "nlines": 10,
         "code": "                    if (opInfo.hasOutput()) {\n                        for (MessagePartInfo mpi : opInfo.getOutput().getMessageParts()) {\n                            assert mpi.getXmlSchema() != null;\n                            if (mpi.isElement()) {\n                                assert mpi.getXmlSchema() instanceof XmlSchemaElement;\n                            } else {\n                                assert !(mpi.getXmlSchema() instanceof XmlSchemaElement);\n                            }\n                        }\n                    }",
@@ -558,9 +551,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/cxf-java/rt/wsdl/src/main/java/org/apache/cxf/wsdl/service/factory/ReflectionServiceFactoryBean.java",
+        "file": "systems/cxf-java/org/apache/cxf/wsdl/service/factory/ReflectionServiceFactoryBean.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/cxf_976_1492_vs_cxf_976_1493/systems/cxf-java/rt/wsdl/src/main/java/org/apache/cxf/wsdl/service/factory/ReflectionServiceFactoryBean.java"
+        "rewritten_file_path": "data/refactor_out/cxf_976_1492_vs_cxf_976_1493/systems/cxf-java/org/apache/cxf/wsdl/service/factory/ReflectionServiceFactoryBean.java"
       }
     ]
   },
@@ -588,7 +581,7 @@
     "sources": [
       {
         "func_id": "pdfbox_137_205",
-        "file": "systems/pdfbox-java/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
+        "file": "systems/pdfbox-java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
         "range": "1658-1669",
         "nlines": 12,
         "code": "        {\n            Object columnGap = this.getColumnGap();\n            sb.append(\", ColumnGap=\");\n            if (columnGap instanceof float[])\n            {\n                sb.append(arrayToString((float[]) columnGap));\n            }\n            else\n            {\n                sb.append(columnGap);\n            }\n        }",
@@ -606,7 +599,7 @@
       },
       {
         "func_id": "pdfbox_137_207",
-        "file": "systems/pdfbox-java/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
+        "file": "systems/pdfbox-java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
         "range": "1671-1682",
         "nlines": 12,
         "code": "        {\n            Object columnWidth = this.getColumnWidths();\n            sb.append(\", ColumnWidths=\");\n            if (columnWidth instanceof float[])\n            {\n                sb.append(arrayToString((float[]) columnWidth));\n            }\n            else\n            {\n                sb.append(columnWidth);\n            }\n        }",
@@ -625,9 +618,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/pdfbox-java/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
+        "file": "systems/pdfbox-java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/pdfbox_137_205_vs_pdfbox_137_207/systems/pdfbox-java/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java"
+        "rewritten_file_path": "data/refactor_out/pdfbox_137_205_vs_pdfbox_137_207/systems/pdfbox-java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java"
       }
     ]
   },
@@ -655,7 +648,7 @@
     "sources": [
       {
         "func_id": "tomcat_428_379",
-        "file": "systems/tomcat-java/java/org/apache/jasper/EmbeddedServletOptions.java",
+        "file": "systems/tomcat-java/org/apache/jasper/EmbeddedServletOptions.java",
         "range": "555-563",
         "nlines": 9,
         "code": "        if (checkInterval != null) {\n            try {\n                this.checkInterval = Integer.parseInt(checkInterval);\n            } catch (NumberFormatException ex) {\n                if (log.isWarnEnabled()) {\n                    log.warn(Localizer.getMessage(\"jsp.warning.checkInterval\"));\n                }\n            }\n        }",
@@ -673,7 +666,7 @@
       },
       {
         "func_id": "tomcat_428_380",
-        "file": "systems/tomcat-java/java/org/apache/jasper/EmbeddedServletOptions.java",
+        "file": "systems/tomcat-java/org/apache/jasper/EmbeddedServletOptions.java",
         "range": "743-751",
         "nlines": 9,
         "code": "        if (maxLoadedJsps != null) {\n            try {\n                this.maxLoadedJsps = Integer.parseInt(maxLoadedJsps);\n            } catch (NumberFormatException ex) {\n                if (log.isWarnEnabled()) {\n                    log.warn(Localizer.getMessage(\"jsp.warning.maxLoadedJsps\", \"\" + this.maxLoadedJsps));\n                }\n            }\n        }",
@@ -692,7 +685,7 @@
     ],
     "updated_files": [
       {
-        "file": "systems/tomcat-java/java/org/apache/jasper/EmbeddedServletOptions.java",
+        "file": "systems/tomcat-java/org/apache/jasper/EmbeddedServletOptions.java",
         "inserted_extracted_method": true,
         "rewritten_file_path": "data/refactor_out/tomcat_428_379_vs_tomcat_428_380/systems/tomcat-java/java/org/apache/jasper/EmbeddedServletOptions.java"
       }
@@ -724,7 +717,7 @@
     "sources": [
       {
         "func_id": "logging-log4j2_273_375",
-        "file": "systems/logging-log4j2-java/log4j-core/src/main/java/org/apache/logging/log4j/core/appender/rolling/RollingFileManager.java",
+        "file": "systems/logging-log4j2-java/org/apache/logging/log4j/core/appender/rolling/RollingFileManager.java",
         "range": "480-493",
         "nlines": 14,
         "code": "            } else {\n                asyncExecutor.shutdownNow();\n                try {\n                    asyncExecutor.awaitTermination(timeout, timeUnit);\n                    if (asyncExecutor.isTerminated()) {\n                        LOGGER.debug(\"All asynchronous threads have terminated\");\n                    } else {\n                        LOGGER.debug(\n                                \"RollingFileManager shutting down but some asynchronous services may not have completed\");\n                    }\n                } catch (final InterruptedException inner) {\n                    LOGGER.warn(\"RollingFileManager stopped but some asynchronous services may not have completed.\");\n                }\n            }",
@@ -742,7 +735,7 @@
       },
       {
         "func_id": "logging-log4j2_273_376",
-        "file": "systems/logging-log4j2-java/log4j-core/src/main/java/org/apache/logging/log4j/core/appender/rolling/RollingFileManager.java",
+        "file": "systems/logging-log4j2-java/org/apache/logging/log4j/core/appender/rolling/RollingFileManager.java",
         "range": "494-506",
         "nlines": 13,
         "code": "        } catch (final InterruptedException ie) {\n            asyncExecutor.shutdownNow();\n            try {\n                asyncExecutor.awaitTermination(timeout, timeUnit);\n                if (asyncExecutor.isTerminated()) {\n                    LOGGER.debug(\"All asynchronous threads have terminated\");\n                }\n            } catch (final InterruptedException inner) {\n                LOGGER.warn(\"RollingFileManager stopped but some asynchronous services may not have completed.\");\n            }\n            // Preserve interrupt status\n            Thread.currentThread().interrupt();\n        }",
@@ -761,9 +754,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/logging-log4j2-java/log4j-core/src/main/java/org/apache/logging/log4j/core/appender/rolling/RollingFileManager.java",
+        "file": "systems/logging-log4j2-java/org/apache/logging/log4j/core/appender/rolling/RollingFileManager.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/logging-log4j2_273_375_vs_logging-log4j2_273_376/systems/logging-log4j2-java/log4j-core/src/main/java/org/apache/logging/log4j/core/appender/rolling/RollingFileManager.java"
+        "rewritten_file_path": "data/refactor_out/logging-log4j2_273_375_vs_logging-log4j2_273_376/systems/logging-log4j2-java/org/apache/logging/log4j/core/appender/rolling/RollingFileManager.java"
       }
     ]
   },
@@ -791,7 +784,7 @@
     "sources": [
       {
         "func_id": "pdfbox_137_202",
-        "file": "systems/pdfbox-java/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
+        "file": "systems/pdfbox-java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
         "range": "1511-1522",
         "nlines": 12,
         "code": "        {\n            Object borderThickness = this.getBorderThickness();\n            sb.append(\", BorderThickness=\");\n            if (borderThickness instanceof float[])\n            {\n                sb.append(arrayToString((float[]) borderThickness));\n            }\n            else\n            {\n                sb.append(borderThickness);\n            }\n        }",
@@ -809,7 +802,7 @@
       },
       {
         "func_id": "pdfbox_137_204",
-        "file": "systems/pdfbox-java/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
+        "file": "systems/pdfbox-java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
         "range": "1603-1614",
         "nlines": 12,
         "code": "        {\n            Object tPadding = this.getTPadding();\n            sb.append(\", TPadding=\");\n            if (tPadding instanceof float[])\n            {\n                sb.append(arrayToString((float[]) tPadding));\n            }\n            else\n            {\n                sb.append(tPadding);\n            }\n        }",
@@ -828,9 +821,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/pdfbox-java/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
+        "file": "systems/pdfbox-java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/pdfbox_137_202_vs_pdfbox_137_204/systems/pdfbox-java/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java"
+        "rewritten_file_path": "data/refactor_out/pdfbox_137_202_vs_pdfbox_137_204/systems/pdfbox-java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java"
       }
     ]
   },
@@ -858,7 +851,7 @@
     "sources": [
       {
         "func_id": "derby_33_63",
-        "file": "systems/derby-java/java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java",
+        "file": "systems/derby-java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java",
         "range": "1194-1208",
         "nlines": 15,
         "code": "\t{\n\t    needJdk12ext = true;\n            // Check for extensions\n            try\n            {\n                Class jtaClass = Class.forName(\"javax.transaction.xa.Xid\");\n                Class jdbcClass = Class.forName(\"javax.sql.RowSet\");\n            } \n            catch (ClassNotFoundException cnfe)\n            {\n                // at least one of the extension classes was not found\n                result = true; // skip this test\n            }\t\t\t\n\t    if (result) return true; // stop looking once know should skip\n        }",
@@ -876,7 +869,7 @@
       },
       {
         "func_id": "derby_33_64",
-        "file": "systems/derby-java/java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java",
+        "file": "systems/derby-java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java",
         "range": "1211-1222",
         "nlines": 12,
         "code": "        {\n            needEncryption = true;\n            try \n            {\n                Class jceClass = Class.forName(\"javax.crypto.Cipher\");\n            }\n            catch (ClassNotFoundException cnfe)\n            {\n                result = true;\n            }\n            if (result) return true;\n        }",
@@ -895,7 +888,7 @@
     ],
     "updated_files": [
       {
-        "file": "systems/derby-java/java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java",
+        "file": "systems/derby-java/org/apache/derbyTesting/functionTests/harness/RunList.java",
         "inserted_extracted_method": true,
         "rewritten_file_path": "data/refactor_out/derby_33_63_vs_derby_33_64/systems/derby-java/java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java"
       }
@@ -925,7 +918,7 @@
     "sources": [
       {
         "func_id": "jhotdraw7_23_85",
-        "file": "systems/jhotdraw7-java/org.jhotdraw7.samples.odg/src/main/java/org/jhotdraw/samples/odg/io/ODGStylesReader.java",
+        "file": "systems/jhotdraw7-java/org/jhotdraw/samples/odg/io/ODGStylesReader.java",
         "range": "287-301",
         "nlines": 15,
         "code": "        for (IXMLElement child : elem.getChildren()) {\n            String ns = child.getNamespace();\n            String name = child.getName();\n            if (\"styles\".equals(name) && (ns == null || ns.equals(OFFICE_NAMESPACE))) {\n                readStylesElement(child);\n            } else if (\"automatic-styles\".equals(name) && (ns == null || ns.equals(OFFICE_NAMESPACE))) {\n                readAutomaticStylesElement(child);\n            } else if (\"master-styles\".equals(name) && (ns == null || ns.equals(OFFICE_NAMESPACE))) {\n                readMasterStylesElement(child);\n            } else {\n                if (DEBUG) {\n                    System.out.println(\"ODGStylesReader unsupported <\" + elem.getName() + \"> child \" + child);\n                }\n            }\n        }",
@@ -943,7 +936,7 @@
       },
       {
         "func_id": "jhotdraw7_23_86",
-        "file": "systems/jhotdraw7-java/org.jhotdraw7.samples.odg/src/main/java/org/jhotdraw/samples/odg/io/ODGStylesReader.java",
+        "file": "systems/jhotdraw7-java/org/jhotdraw/samples/odg/io/ODGStylesReader.java",
         "range": "256-267",
         "nlines": 12,
         "code": "        for (IXMLElement child : elem.getChildren()) {\n            String ns = child.getNamespace();\n            String name = child.getName();\n            if (\"automatic-styles\".equals(name) && (ns == null || ns.equals(OFFICE_NAMESPACE))) {\n                readAutomaticStylesElement(child);\n            } else if (\"master-styles\".equals(name) && (ns == null || ns.equals(OFFICE_NAMESPACE))) {\n                readStylesElement(child);\n            } else if (\"styles\".equals(name) && (ns == null || ns.equals(OFFICE_NAMESPACE))) {\n                readStylesElement(child);\n            }\n\n        }",
@@ -962,9 +955,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/jhotdraw7-java/org.jhotdraw7.samples.odg/src/main/java/org/jhotdraw/samples/odg/io/ODGStylesReader.java",
+        "file": "systems/jhotdraw7-java/org/jhotdraw/samples/odg/io/ODGStylesReader.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/jhotdraw7_23_85_vs_jhotdraw7_23_86/systems/jhotdraw7-java/org.jhotdraw7.samples.odg/src/main/java/org/jhotdraw/samples/odg/io/ODGStylesReader.java"
+        "rewritten_file_path": "data/refactor_out/jhotdraw7_23_85_vs_jhotdraw7_23_86/systems/jhotdraw7-java/org/jhotdraw/samples/odg/io/ODGStylesReader.java"
       }
     ]
   },
@@ -1001,7 +994,7 @@
     "sources": [
       {
         "func_id": "pig_774_1150",
-        "file": "systems/pig-java/src/org/apache/pig/pen/AugmentBaseDataVisitor.java",
+        "file": "systems/pig-java/org/apache/pig/pen/AugmentBaseDataVisitor.java",
         "range": "1066-1077",
         "nlines": 12,
         "code": "                    || pred instanceof GreaterThanEqualExpression) {\n                if (leftIsConst) {\n                    t.set(rightCol, generateData(rightDataType,\n                            GetSmallerValue(leftConst).toString()));\n                } else if (rightIsConst) {\n                    t.set(leftCol, generateData(leftDataType, GetLargerValue(\n                            rightConst).toString()));\n                } else {\n                    t.set(leftCol, generateData(leftDataType, \"1\"));\n                    t.set(rightCol, generateData(rightDataType, \"0\"));\n                }\n            } else if (pred instanceof LessThanExpression",
@@ -1019,7 +1012,7 @@
       },
       {
         "func_id": "pig_774_1151",
-        "file": "systems/pig-java/src/org/apache/pig/pen/AugmentBaseDataVisitor.java",
+        "file": "systems/pig-java/org/apache/pig/pen/AugmentBaseDataVisitor.java",
         "range": "1078-1089",
         "nlines": 12,
         "code": "                    || pred instanceof LessThanEqualExpression) {\n                if (leftIsConst) {\n                    t.set(rightCol, generateData(rightDataType, GetLargerValue(\n                            leftConst).toString()));\n                } else if (rightIsConst) {\n                    t.set(leftCol, generateData(leftDataType, GetSmallerValue(\n                            rightConst).toString()));\n                } else {\n                    t.set(leftCol, generateData(leftDataType, \"0\"));\n                    t.set(rightCol, generateData(rightDataType, \"1\"));\n                }\n            }",
@@ -1038,7 +1031,7 @@
     ],
     "updated_files": [
       {
-        "file": "systems/pig-java/src/org/apache/pig/pen/AugmentBaseDataVisitor.java",
+        "file": "systems/pig-java/org/apache/pig/pen/AugmentBaseDataVisitor.java",
         "inserted_extracted_method": true,
         "rewritten_file_path": "data/refactor_out/pig_774_1150_vs_pig_774_1151/systems/pig-java/src/org/apache/pig/pen/AugmentBaseDataVisitor.java"
       }
@@ -1071,7 +1064,7 @@
     "sources": [
       {
         "func_id": "flink_457_559",
-        "file": "systems/flink-java/flink-table/flink-table-runtime/src/main/java/org/apache/flink/table/runtime/operators/join/window/utils/WindowJoinHelper.java",
+        "file": "systems/flink-java/org/apache/flink/table/runtime/operators/join/window/utils/WindowJoinHelper.java",
         "range": "317-331",
         "nlines": 15,
         "code": "            } else {\n                for (RowData leftRecord : leftRecords) {\n                    boolean matches = false;\n                    for (RowData rightRecord : rightRecords) {\n                        if (joinCondition.apply(leftRecord, rightRecord)) {\n                            output(leftRecord, rightRecord, true);\n                            matches = true;\n                        }\n                    }\n                    if (!matches) {\n                        // padding null for left side\n                        outputNullPadding(leftRecord, true);\n                    }\n                }\n            }",
@@ -1089,7 +1082,7 @@
       },
       {
         "func_id": "flink_457_561",
-        "file": "systems/flink-java/flink-table/flink-table-runtime/src/main/java/org/apache/flink/table/runtime/operators/join/window/utils/WindowJoinHelper.java",
+        "file": "systems/flink-java/org/apache/flink/table/runtime/operators/join/window/utils/WindowJoinHelper.java",
         "range": "345-358",
         "nlines": 14,
         "code": "            } else {\n                for (RowData rightRecord : rightRecords) {\n                    boolean matches = false;\n                    for (RowData leftRecord : leftRecords) {\n                        if (joinCondition.apply(leftRecord, rightRecord)) {\n                            output(leftRecord, rightRecord, true);\n                            matches = true;\n                        }\n                    }\n                    if (!matches) {\n                        outputNullPadding(rightRecord, false);\n                    }\n                }\n            }",
@@ -1108,9 +1101,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/flink-java/flink-table/flink-table-runtime/src/main/java/org/apache/flink/table/runtime/operators/join/window/utils/WindowJoinHelper.java",
+        "file": "systems/flink-java/org/apache/flink/table/runtime/operators/join/window/utils/WindowJoinHelper.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/flink_457_559_vs_flink_457_561/systems/flink-java/flink-table/flink-table-runtime/src/main/java/org/apache/flink/table/runtime/operators/join/window/utils/WindowJoinHelper.java"
+        "rewritten_file_path": "data/refactor_out/flink_457_559_vs_flink_457_561/systems/flink-java/org/apache/flink/table/runtime/operators/join/window/utils/WindowJoinHelper.java"
       }
     ]
   },
@@ -1140,7 +1133,7 @@
     "sources": [
       {
         "func_id": "jackrabbit_773_1280",
-        "file": "systems/jackrabbit-java/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/NameRangeQuery.java",
+        "file": "systems/jackrabbit-java/org/apache/jackrabbit/core/query/lucene/NameRangeQuery.java",
         "range": "170-178",
         "nlines": 9,
         "code": "        try {\n            String text;\n            if (lowerName == null) {\n                text = nsMappings.getPrefix(upperName.getNamespaceURI()) + \":\";\n            } else {\n                text = nsMappings.translateName(lowerName);\n            }\n            return new Term(FieldNames.LABEL, text);\n        } catch (RepositoryException e) {",
@@ -1158,7 +1151,7 @@
       },
       {
         "func_id": "jackrabbit_773_1282",
-        "file": "systems/jackrabbit-java/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/NameRangeQuery.java",
+        "file": "systems/jackrabbit-java/org/apache/jackrabbit/core/query/lucene/NameRangeQuery.java",
         "range": "188-196",
         "nlines": 9,
         "code": "        try {\n            String text;\n            if (upperName == null) {\n                text = nsMappings.getPrefix(lowerName.getNamespaceURI()) + \":\\uFFFF\";\n            } else {\n                text = nsMappings.translateName(upperName);\n            }\n            return new Term(FieldNames.LABEL, text);\n        } catch (RepositoryException e) {",
@@ -1177,9 +1170,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/jackrabbit-java/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/NameRangeQuery.java",
+        "file": "systems/jackrabbit-java/org/apache/jackrabbit/core/query/lucene/NameRangeQuery.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/jackrabbit_773_1280_vs_jackrabbit_773_1282/systems/jackrabbit-java/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/NameRangeQuery.java"
+        "rewritten_file_path": "data/refactor_out/jackrabbit_773_1280_vs_jackrabbit_773_1282/systems/jackrabbit-java/org/apache/jackrabbit/core/query/lucene/NameRangeQuery.java"
       }
     ]
   },
@@ -1208,7 +1201,7 @@
     "sources": [
       {
         "func_id": "hive_1756_2123",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
         "range": "484-493",
         "nlines": 10,
         "code": "    case LONG: {\n      LongColumnVector lcv = (LongColumnVector) col;\n      if (value == null) {\n        lcv.noNulls = false;\n        lcv.isNull[0] = true;\n        lcv.isRepeating = true;\n      } else {\n        lcv.fill((Long) value);\n      }\n    }",
@@ -1226,7 +1219,7 @@
       },
       {
         "func_id": "hive_1756_2127",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
         "range": "448-457",
         "nlines": 10,
         "code": "    case BYTE: {\n      LongColumnVector lcv = (LongColumnVector) col;\n      if (value == null) {\n        lcv.noNulls = false;\n        lcv.isNull[0] = true;\n        lcv.isRepeating = true;\n      } else {\n        lcv.fill((Byte) value);\n      }\n    }",
@@ -1245,9 +1238,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/hive_1756_2123_vs_hive_1756_2127/systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java"
+        "rewritten_file_path": "data/refactor_out/hive_1756_2123_vs_hive_1756_2127/systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java"
       }
     ]
   },
@@ -1277,7 +1270,7 @@
     "sources": [
       {
         "func_id": "cassandra_1099_228",
-        "file": "systems/cassandra-java/src/java/org/apache/cassandra/db/RepairedDataInfo.java",
+        "file": "systems/cassandra-java/org/apache/cassandra/db/RepairedDataInfo.java",
         "range": "203-215",
         "nlines": 13,
         "code": "            {\n                if (repairedCounter.isDone())\n                    return marker;\n\n                assert purger != null;\n                RangeTombstoneMarker purged = purger.applyToMarker(marker);\n                if (purged != null)\n                {\n                    isFullyPurged = false;\n                    purged.digest(getPerPartitionDigest());\n                }\n                return marker;\n            }",
@@ -1295,7 +1288,7 @@
       },
       {
         "func_id": "cassandra_1099_229",
-        "file": "systems/cassandra-java/src/java/org/apache/cassandra/db/RepairedDataInfo.java",
+        "file": "systems/cassandra-java/org/apache/cassandra/db/RepairedDataInfo.java",
         "range": "223-235",
         "nlines": 13,
         "code": "            {\n                if (repairedCounter.isDone())\n                    return row;\n\n                assert purger != null;\n                Row purged = purger.applyToRow(row);\n                if (purged != null && !purged.isEmpty())\n                {\n                    isFullyPurged = false;\n                    purged.digest(getPerPartitionDigest());\n                }\n                return row;\n            }",
@@ -1314,9 +1307,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/cassandra-java/src/java/org/apache/cassandra/db/RepairedDataInfo.java",
+        "file": "systems/cassandra-java/org/apache/cassandra/db/RepairedDataInfo.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/cassandra_1099_228_vs_cassandra_1099_229/systems/cassandra-java/src/java/org/apache/cassandra/db/RepairedDataInfo.java"
+        "rewritten_file_path": "data/refactor_out/cassandra_1099_228_vs_cassandra_1099_229/systems/cassandra-java/org/apache/cassandra/db/RepairedDataInfo.java"
       }
     ]
   },
@@ -1345,7 +1338,7 @@
     "sources": [
       {
         "func_id": "hive_1756_2117",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
         "range": "508-517",
         "nlines": 10,
         "code": "    case TIMESTAMP: {\n      TimestampColumnVector lcv = (TimestampColumnVector) col;\n      if (value == null) {\n        lcv.noNulls = false;\n        lcv.isNull[0] = true;\n        lcv.isRepeating = true;\n      } else {\n        lcv.fill(((Timestamp) value).toSqlTimestamp());\n      }\n    }",
@@ -1363,7 +1356,7 @@
       },
       {
         "func_id": "hive_1756_2128",
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
         "range": "460-469",
         "nlines": 10,
         "code": "    case SHORT: {\n      LongColumnVector lcv = (LongColumnVector) col;\n      if (value == null) {\n        lcv.noNulls = false;\n        lcv.isNull[0] = true;\n        lcv.isRepeating = true;\n      } else {\n        lcv.fill((Short) value);\n      }\n    }",
@@ -1382,9 +1375,9 @@
     ],
     "updated_files": [
       {
-        "file": "systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
+        "file": "systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/hive_1756_2117_vs_hive_1756_2128/systems/hive-java/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java"
+        "rewritten_file_path": "data/refactor_out/hive_1756_2117_vs_hive_1756_2128/systems/hive-java/org/apache/hadoop/hive/ql/exec/vector/VectorizedRowBatchCtx.java"
       }
     ]
   }
