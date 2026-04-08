@@ -1,6 +1,8 @@
 package refactor_plugin.util;
 
+import java.io.File;
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -13,9 +15,15 @@ import java.util.regex.Pattern;
 
 import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Path;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IFileEditorInput;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
@@ -61,6 +69,17 @@ public class CloneRefactoring {
      * Must be called on the UI thread.
      */
     public static void apply(org.eclipse.swt.widgets.Shell shell, CloneRecord record) {
+        apply(shell, record, null);
+    }
+
+    /**
+     * @param reuseEditorIfSamePath when non-null and its file path matches a target file,
+     *                              that editor's document is used instead of
+     *                              {@link IDE#openEditorOnFileStore} (avoids a second editor tab /
+     *                              OS handler on Dropzone refactor).
+     */
+    public static void apply(org.eclipse.swt.widgets.Shell shell, CloneRecord record,
+            ITextEditor reuseEditorIfSamePath) {
         if (record.sources == null || record.sources.isEmpty()) { return; }
 
         // Group sources by resolved absolute file path so each file is opened once.
@@ -90,7 +109,7 @@ public class CloneRefactoring {
             boolean doInsert = insertMethodIn.isEmpty()
                                || insertMethodIn.contains(absFile);
             applyToFile(shell, absFile, entry.getValue(),
-                        doInsert ? record.extracted_method : null);
+                        doInsert ? record.extracted_method : null, reuseEditorIfSamePath);
         }
     }
 
@@ -98,15 +117,31 @@ public class CloneRefactoring {
 
     private static void applyToFile(org.eclipse.swt.widgets.Shell shell, String absFile,
                                      List<CloneSource> sources,
-                                     ExtractedMethod em) {
+                                     ExtractedMethod em,
+                                     ITextEditor reuseIfSamePath) {
         try {
             URI fileUri = new java.io.File(absFile).toURI();
             IFileStore    fileStore = EFS.getLocalFileSystem().getStore(fileUri);
             IWorkbenchPage page     = PlatformUI.getWorkbench()
                                                 .getActiveWorkbenchWindow()
                                                 .getActivePage();
-            IEditorPart editor = IDE.openEditorOnFileStore(page, fileStore);
-            if (!(editor instanceof ITextEditor te)) { return; }
+            ITextEditor te = null;
+            if (reuseIfSamePath != null
+                    && pathsEqualNormalized(absFile, pathFromTextEditor(reuseIfSamePath))) {
+                te = reuseIfSamePath;
+            }
+            if (te == null) {
+                IEditorPart editor;
+                IFile wsFile = ResourcesPlugin.getWorkspace().getRoot()
+                        .getFileForLocation(Path.fromOSString(absFile));
+                if (wsFile != null && wsFile.exists()) {
+                    editor = IDE.openEditor(page, wsFile, true);
+                } else {
+                    editor = IDE.openEditorOnFileStore(page, fileStore);
+                }
+                if (!(editor instanceof ITextEditor opened)) { return; }
+                te = opened;
+            }
 
             IDocument doc = te.getDocumentProvider().getDocument(te.getEditorInput());
             if (doc == null) { return; }
@@ -203,6 +238,46 @@ public class CloneRefactoring {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private static boolean pathsEqualNormalized(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        try {
+            return Paths.get(a).normalize().equals(Paths.get(b).normalize());
+        } catch (Exception e) {
+            return a.equals(b);
+        }
+    }
+
+    private static String pathFromTextEditor(ITextEditor ed) {
+        var input = ed.getEditorInput();
+        if (input instanceof IFileEditorInput fei) {
+            IFile file = fei.getFile();
+            if (file != null && file.getLocation() != null) {
+                return file.getLocation().toOSString();
+            }
+        }
+        IPath ipath = input.getAdapter(IPath.class);
+        if (ipath != null) {
+            String s = ipath.toOSString();
+            if (new File(s).exists()) {
+                return s;
+            }
+            IPath wsLoc = Platform.getLocation();
+            if (wsLoc != null) {
+                return wsLoc.append(ipath.makeRelative()).toOSString();
+            }
+            return s;
+        }
+        try {
+            URI uri = input.getAdapter(URI.class);
+            if (uri != null) {
+                return Paths.get(uri).toString();
+            }
+        } catch (Exception ignored) { /* skip */ }
+        return null;
+    }
 
     private static int[] parseRangeInts(String range) {
         if (range == null) { return null; }

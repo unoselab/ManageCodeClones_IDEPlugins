@@ -45,7 +45,7 @@
       },
       {
         "func_id": "camel_2720_2660",
-        "file": "systems/camel-javaorg/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java",
+        "file": "systems/camel-java/org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java",
         "range": "476-495",
         "nlines": 20,
         "code": "        for (String dep : deps) {\n            MavenGav gav = parseMavenGav(dep);\n            String gid = gav.getGroupId();\n            String aid = gav.getArtifactId();\n            // transform to camel-quarkus extension GAV\n            if (\"org.apache.camel\".equals(gid)) {\n                String qaid = aid.replace(\"camel-\", \"camel-quarkus-\");\n                ArtifactModel<?> am = catalog.modelFromMavenGAV(\"org.apache.camel.quarkus\", qaid, null);\n                if (am != null) {\n                    // use quarkus extension\n                    gav.setGroupId(am.getGroupId());\n                    gav.setArtifactId(am.getArtifactId());\n                    gav.setVersion(null); // uses BOM so version should not be included\n                } else {\n                    // there is no quarkus extension so use plain camel\n                    gav.setVersion(camelVersion);\n                }\n            }\n            gavs.add(gav);\n        }",
@@ -851,7 +851,7 @@
     "sources": [
       {
         "func_id": "derby_33_63",
-        "file": "systems/derby-java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java",
+        "file": "systems/derby-java/org/apache/derbyTesting/functionTests/harness/RunList.java",
         "range": "1194-1208",
         "nlines": 15,
         "code": "\t{\n\t    needJdk12ext = true;\n            // Check for extensions\n            try\n            {\n                Class jtaClass = Class.forName(\"javax.transaction.xa.Xid\");\n                Class jdbcClass = Class.forName(\"javax.sql.RowSet\");\n            } \n            catch (ClassNotFoundException cnfe)\n            {\n                // at least one of the extension classes was not found\n                result = true; // skip this test\n            }\t\t\t\n\t    if (result) return true; // stop looking once know should skip\n        }",
@@ -869,7 +869,7 @@
       },
       {
         "func_id": "derby_33_64",
-        "file": "systems/derby-java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java",
+        "file": "systems/derby-java/org/apache/derbyTesting/functionTests/harness/RunList.java",
         "range": "1211-1222",
         "nlines": 12,
         "code": "        {\n            needEncryption = true;\n            try \n            {\n                Class jceClass = Class.forName(\"javax.crypto.Cipher\");\n            }\n            catch (ClassNotFoundException cnfe)\n            {\n                result = true;\n            }\n            if (result) return true;\n        }",
@@ -890,7 +890,7 @@
       {
         "file": "systems/derby-java/org/apache/derbyTesting/functionTests/harness/RunList.java",
         "inserted_extracted_method": true,
-        "rewritten_file_path": "data/refactor_out/derby_33_63_vs_derby_33_64/systems/derby-java/java/org.apache.derby.tests/org/apache/derbyTesting/functionTests/harness/RunList.java"
+        "rewritten_file_path": "data/refactor_out/derby_33_63_vs_derby_33_64/systems/derby-java/java/org/apache/derbyTesting/functionTests/harness/RunList.java"
       }
     ]
   },

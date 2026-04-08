@@ -52,6 +52,11 @@ public class CloneContext {
      */
     public final Map<String, String> lastOpenedByFile = new HashMap<>();
 
+    /** UI focus from CloneGraphView to steer Dropzone/plan routing. */
+    public volatile String preferredProject = null;
+    public volatile String preferredClassName = null;
+    public volatile String preferredClassId = null;
+
     /**
      * Absolute path to {@code runtime-refactor_plugin/} (parent of {@code systems/}).
      * JSON {@code file} entries are relative to this root (e.g. {@code systems/.../Foo.java}).
@@ -62,6 +67,27 @@ public class CloneContext {
 
     public static CloneContext get() { return INSTANCE; }
 
+    public void setGraphFocus(String project, String className, String classId) {
+        preferredProject = project;
+        preferredClassName = className;
+        preferredClassId = classId;
+    }
+
+    /**
+     * Fixes known bad relative paths in clone JSON (e.g. missing slash in
+     * {@code camel-javaorg/} so it resolves beside the real {@code camel-java/org/} tree).
+     */
+    public static String normalizeJsonFilePath(String filePath) {
+        if (filePath == null || filePath.isBlank()) {
+            return filePath;
+        }
+        String n = filePath.replace('\\', '/');
+        if (n.contains("camel-javaorg/")) {
+            n = n.replace("camel-javaorg/", "camel-java/org/");
+        }
+        return n;
+    }
+
     /**
      * Resolves a file path from the JSON.
      * If the path is already absolute and exists, returns it as-is.
@@ -69,9 +95,10 @@ public class CloneContext {
      */
     public String resolvePath(String filePath) {
         if (filePath == null || filePath.isBlank()) { return filePath; }
-        java.io.File f = new java.io.File(filePath);
-        if (f.isAbsolute() && f.exists()) { return filePath; }
-        return workspaceRoot.isEmpty() ? filePath
-                : new java.io.File(workspaceRoot, filePath).getAbsolutePath();
+        String fp = normalizeJsonFilePath(filePath);
+        java.io.File f = new java.io.File(fp);
+        if (f.isAbsolute() && f.exists()) { return fp; }
+        return workspaceRoot.isEmpty() ? fp
+                : new java.io.File(workspaceRoot, fp).getAbsolutePath();
     }
 }

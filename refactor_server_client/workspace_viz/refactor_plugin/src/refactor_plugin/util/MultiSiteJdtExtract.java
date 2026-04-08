@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspace;
@@ -28,6 +29,7 @@ import org.eclipse.jface.text.IDocument;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IFileEditorInput;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import refactor_plugin.model.CloneContext;
@@ -217,6 +219,10 @@ public final class MultiSiteJdtExtract {
         }
         IWorkspace ws = ResourcesPlugin.getWorkspace();
         java.nio.file.Path want = java.nio.file.Paths.get(absPath).normalize();
+        java.nio.file.Path wantReal = tryRealPath(want);
+        String wantKey = ClonePathMatch.canonicalJavaPathKey(absPath.replace('\\', '/'));
+
+        ICompilationUnit keyMatch = null;
         for (IProject p : ws.getRoot().getProjects()) {
             if (!p.isOpen()) {
                 continue;
@@ -247,25 +253,60 @@ public final class MultiSiteJdtExtract {
                             if (loc == null) {
                                 continue;
                             }
-                            if (want.equals(java.nio.file.Paths.get(loc.toOSString())
-                                    .normalize())) {
+                            java.nio.file.Path got = java.nio.file.Paths.get(loc.toOSString())
+                                    .normalize();
+                            if (want.equals(got)) {
                                 return cu;
+                            }
+                            java.nio.file.Path gotReal = tryRealPath(got);
+                            if (wantReal != null && gotReal != null && wantReal.equals(gotReal)) {
+                                return cu;
+                            }
+                            if (wantKey != null && keyMatch == null) {
+                                String gotKey = ClonePathMatch.canonicalJavaPathKey(
+                                        loc.toOSString().replace('\\', '/'));
+                                if (wantKey.equals(gotKey)) {
+                                    keyMatch = cu;
+                                }
                             }
                         }
                     }
                 }
             } catch (Exception ignored) { /* next project */ }
         }
-        return null;
+        return keyMatch;
+    }
+
+    private static java.nio.file.Path tryRealPath(java.nio.file.Path p) {
+        try {
+            return p.toRealPath();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public static void revealMethodInEditor(ICompilationUnit cu, String methodName)
             throws Exception {
+        revealMethodInEditor(cu, methodName, null);
+    }
+
+    /**
+     * Reveals the extracted method in the workbench. When {@code reuseIfSameFile} already shows
+     * this {@code ICompilationUnit}, that editor is reused (no {@link JavaUI#openInEditor});
+     * avoids spawning a second Java editor / OS file-handler prompts on drop refactor.
+     */
+    public static void revealMethodInEditor(ICompilationUnit cu, String methodName,
+            ITextEditor reuseIfSameFile) throws Exception {
         IMethod extractedMethod = findMethodInCu(cu, methodName);
         if (extractedMethod == null || !extractedMethod.exists()) {
             return;
         }
-        IEditorPart editor = JavaUI.openInEditor(cu);
+        IEditorPart editor;
+        if (reuseIfSameFile != null && editorCoversCompilationUnit(reuseIfSameFile, cu)) {
+            editor = reuseIfSameFile;
+        } else {
+            editor = JavaUI.openInEditor(cu);
+        }
         JavaUI.revealInEditor(editor, (IJavaElement) extractedMethod);
         if (editor instanceof ITextEditor textEditor) {
             if (extractedMethod.getNameRange() != null) {
@@ -275,6 +316,33 @@ public final class MultiSiteJdtExtract {
                 textEditor.selectAndReveal(extractedMethod.getSourceRange().getOffset(), 0);
             }
         }
+    }
+
+    private static boolean editorCoversCompilationUnit(ITextEditor ed, ICompilationUnit cu) {
+        if (ed == null || cu == null) {
+            return false;
+        }
+        try {
+            IJavaElement je = JavaUI.getEditorInputJavaElement(ed.getEditorInput());
+            if (je instanceof ICompilationUnit edCu) {
+                if (edCu.getPrimary().getPath().equals(cu.getPrimary().getPath())) {
+                    return true;
+                }
+            }
+            var input = ed.getEditorInput();
+            if (input instanceof IFileEditorInput fei) {
+                IFile f = fei.getFile();
+                IResource res = cu.getResource();
+                if (f != null && res != null && f.getLocation() != null
+                        && res.getLocation() != null
+                        && f.getLocation().equals(res.getLocation())) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+            /* fall through */
+        }
+        return false;
     }
 
     /**

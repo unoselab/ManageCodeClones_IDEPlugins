@@ -49,7 +49,7 @@ public final class ClonePathMatch {
             return false;
         }
         String fileNorm = editorAbsPath.replace('\\', '/');
-        String srcNorm = jsonFile.replace('\\', '/');
+        String srcNorm = CloneContext.normalizeJsonFilePath(jsonFile).replace('\\', '/');
         String resolved = ctx.resolvePath(jsonFile).replace('\\', '/');
 
         if (resolved.equals(fileNorm)) {

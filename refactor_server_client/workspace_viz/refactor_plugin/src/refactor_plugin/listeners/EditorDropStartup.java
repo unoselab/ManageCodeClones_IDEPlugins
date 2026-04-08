@@ -107,6 +107,12 @@ public class EditorDropStartup implements IStartup {
      */
     private static final long INTRA_DRAG_SILENCE_AFTER_CA02_MS = 5_000L;
 
+    /**
+     * After clone-record or generic intra-drag refactor, ignore document events briefly so
+     * revert/replace/JDT echoes are not parsed as a second drag (which stacks dialogs).
+     */
+    private static final long INTRA_DRAG_SILENCE_AFTER_INTRA_REFACTOR_MS = 5_000L;
+
     private record DemoJdtRun(Result result, List<int[]> rangesApplied) {}
 
     /**
@@ -380,7 +386,8 @@ public class EditorDropStartup implements IStartup {
                             || (srcNow != null && MultiSiteJdtExtract
                                     .droppedTextMatchesDemoCloneWindows(srcNow, snippet));
                     if (demoPayload && dropDoc != null) {
-                        if (tryCommandAction02DemoDrop(shell, javaCu, dropDoc, dropOffset)) {
+                        if (tryCommandAction02DemoDrop(shell, javaCu, dropDoc, dropOffset,
+                                editor)) {
                             return;
                         }
                         return;
@@ -404,7 +411,8 @@ public class EditorDropStartup implements IStartup {
                             try {
                                 applyDemoMultiSiteExtractWithMethodRelocation(shell, javaCu, dropDoc,
                                         dropOffset,
-                                        "dropzone\u2192Command Action 02 (EM) [two clones in file]");
+                                        "dropzone\u2192Command Action 02 (EM) [two clones in file]",
+                                        editor);
                             } catch (Exception e) {
                                 MessageDialog.openError(shell, "Extract failed",
                                         e.getMessage() != null ? e.getMessage() : e.toString());
@@ -490,7 +498,7 @@ public class EditorDropStartup implements IStartup {
                 try {
                     cu.reconcile(ICompilationUnit.NO_AST, false, null,
                             new NullProgressMonitor());
-                    MultiSiteJdtExtract.revealMethodInEditor(cu, methodName);
+                    MultiSiteJdtExtract.revealMethodInEditor(cu, methodName, editor);
                 } catch (Exception e) {
                     System.err.println("[refactor_plugin] post-extract: " + e.getMessage());
                 }
@@ -574,7 +582,7 @@ public class EditorDropStartup implements IStartup {
                         }
                         int placementOffset = offsetAfterRemovingRange(dropOffset, pasted);
                         applyDemoMultiSiteExtractWithMethodRelocation(shell, cu, doc, placementOffset,
-                                "text-transfer-drop\u2192Command Action 02 (EM)");
+                                "text-transfer-drop\u2192Command Action 02 (EM)", editor);
                     } catch (Exception e) {
                         MessageDialog.openError(shell, "Extract failed",
                                 e.getMessage() != null ? e.getMessage() : e.toString());
@@ -785,7 +793,7 @@ public class EditorDropStartup implements IStartup {
                 try {
                     cu.reconcile(ICompilationUnit.NO_AST, false, null,
                             new NullProgressMonitor());
-                    MultiSiteJdtExtract.revealMethodInEditor(cu, methodName);
+                    MultiSiteJdtExtract.revealMethodInEditor(cu, methodName, editor);
                 } catch (Exception e) {
                     System.err.println("[refactor_plugin] post-extract: " + e.getMessage());
                 }
@@ -864,7 +872,7 @@ public class EditorDropStartup implements IStartup {
     }
 
     private void presentDemoMultiSiteResult(Shell shell, ICompilationUnit cu, Result res,
-            String logTag, List<int[]> rangesApplied) {
+            String logTag, List<int[]> rangesApplied, ITextEditor reuseEditorForReveal) {
         String rangesStr = rangesApplied != null && !rangesApplied.isEmpty()
                 ? Arrays.deepToString(rangesApplied.toArray(new int[0][]))
                 : Arrays.deepToString(
@@ -878,7 +886,8 @@ public class EditorDropStartup implements IStartup {
         if (res.ok()) {
             try {
                 MultiSiteJdtExtract.revealMethodInEditor(cu,
-                        MultiSiteJdtExtract.ExtractMethodHandlerDemo.UNIFIED_METHOD_NAME);
+                        MultiSiteJdtExtract.ExtractMethodHandlerDemo.UNIFIED_METHOD_NAME,
+                        reuseEditorForReveal);
             } catch (Exception e) {
                 System.err.println("[refactor_plugin] reveal demo extract: " + e.getMessage());
             }
@@ -904,7 +913,7 @@ public class EditorDropStartup implements IStartup {
      *         {@code false} if the user cancelled (caller must not insert or run single-site EM)
      */
     private boolean tryCommandAction02DemoDrop(Shell shell, ICompilationUnit cu, IDocument doc,
-            int dropOffset) {
+            int dropOffset, ITextEditor editor) {
         String rangesStr = Arrays.deepToString(
                 MultiSiteJdtExtract.ExtractMethodHandlerDemo.SAME_FILE_CLONE_RANGES);
         boolean confirm = MessageDialog.openConfirm(shell,
@@ -925,7 +934,7 @@ public class EditorDropStartup implements IStartup {
         }
         try {
             applyDemoMultiSiteExtractWithMethodRelocation(shell, cu, doc, dropOffset,
-                    "dropzone\u2192Command Action 02 (EM)");
+                    "dropzone\u2192Command Action 02 (EM)", editor);
             return true;
         } catch (Exception e) {
             MessageDialog.openError(shell, "Extract failed",
@@ -940,11 +949,13 @@ public class EditorDropStartup implements IStartup {
      * {@code userDropOffset} (after the enclosing method, or a valid gap between methods).
      */
     private void applyDemoMultiSiteExtractWithMethodRelocation(Shell shell, ICompilationUnit cu,
-            IDocument doc, int userDropOffset, String logTag) throws Exception {
+            IDocument doc, int userDropOffset, String logTag, ITextEditor editorForReveal)
+            throws Exception {
         cu.reconcile(ICompilationUnit.NO_AST, false, null, new NullProgressMonitor());
         DemoJdtRun run = runDemoMultiSiteJdtExtract(cu);
         if (!run.result().ok()) {
-            presentDemoMultiSiteResult(shell, cu, run.result(), logTag, run.rangesApplied());
+            presentDemoMultiSiteResult(shell, cu, run.result(), logTag, run.rangesApplied(),
+                    editorForReveal);
             return;
         }
         try {
@@ -956,7 +967,8 @@ public class EditorDropStartup implements IStartup {
         } catch (Exception ex) {
             System.err.println("[refactor_plugin] relocate after EM: " + ex.getMessage());
         }
-        presentDemoMultiSiteResult(shell, cu, run.result(), logTag, run.rangesApplied());
+        presentDemoMultiSiteResult(shell, cu, run.result(), logTag, run.rangesApplied(),
+                editorForReveal);
     }
 
     private static void logJdtSelectionTrace(String traceTag, String absPath,
@@ -1043,8 +1055,15 @@ public class EditorDropStartup implements IStartup {
             ITextEditor relocateEditor, int userDropOffset) {
         ICompilationUnit cu =
                 MultiSiteJdtExtract.findCompilationUnitForAbsolutePath(filePath);
-        if (cu != null
-                && MultiSiteJdtExtract.isSameFileJavaCloneForEditor(record, filePath)) {
+        if (cu == null && relocateEditor != null) {
+            ICompilationUnit fromDrop = compilationUnitFromJavaIFileEditor(relocateEditor);
+            if (fromDrop != null) {
+                cu = fromDrop;
+            }
+        }
+        boolean strictSameFile = MultiSiteJdtExtract.isSameFileJavaCloneForEditor(record, filePath);
+        boolean relaxedSameFile = isLikelySameFileCloneForEditor(record, filePath);
+        if (cu != null && (strictSameFile || relaxedSameFile)) {
             Result res = MultiSiteJdtExtract.applyForCloneRecord(cu, record);
             if (res.ok()) {
                 String unified = MultiSiteJdtExtract.unifiedNameFromRecord(record);
@@ -1066,7 +1085,7 @@ public class EditorDropStartup implements IStartup {
                     }
                 }
                 try {
-                    MultiSiteJdtExtract.revealMethodInEditor(cu, unified);
+                    MultiSiteJdtExtract.revealMethodInEditor(cu, unified, relocateEditor);
                 } catch (Exception e) {
                     System.err.println("[refactor_plugin] reveal after JDT extract: "
                             + e.getMessage());
@@ -1077,14 +1096,50 @@ public class EditorDropStartup implements IStartup {
                 return;
             }
             System.out.println("[refactor_plugin] JDT extract skipped, using JSON: "
-                    + res.title() + " \u2014 " + res.detail());
+                    + res.title() + " \u2014 " + res.detail()
+                    + " [strictSameFile=" + strictSameFile
+                    + ", relaxedSameFile=" + relaxedSameFile + "]");
         }
-        CloneRefactoring.apply(shell, record);
+        CloneRefactoring.apply(shell, record, relocateEditor);
         MessageDialog.openInformation(shell, "Extract Method Applied",
                 "Applied precomputed JSON edits for " + record.classid + " \u2014 "
                         + record.sources.size()
                         + " site(s). (JDT was not used: different files, no Java model, "
                         + "or extract preconditions failed \u2014 see console.)");
+    }
+
+    /**
+     * Relaxed same-file check for mirrored workspaces:
+     * clone JSON may point to systems/.../Foo.java while editor is project_target.../Foo.java.
+     */
+    private boolean isLikelySameFileCloneForEditor(CloneRecord record, String editorAbsPath) {
+        if (record == null || record.sources == null || record.sources.isEmpty()
+                || editorAbsPath == null || record.same_file != 1) {
+            return false;
+        }
+        String editorBase = java.nio.file.Paths.get(editorAbsPath.replace('\\', '/'))
+                .getFileName().toString();
+        for (CloneRecord.CloneSource s : record.sources) {
+            if (s == null || s.file == null || s.range == null || s.range.isBlank()) {
+                return false;
+            }
+            String[] parts = s.range.split("-");
+            if (parts.length < 2) {
+                return false;
+            }
+            try {
+                Integer.parseInt(parts[0].trim());
+                Integer.parseInt(parts[1].trim());
+            } catch (Exception ex) {
+                return false;
+            }
+            String srcBase = java.nio.file.Paths.get(s.file.replace('\\', '/'))
+                    .getFileName().toString();
+            if (!editorBase.equals(srcBase)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // ── Intra-editor drag detection (mirrors VS Code dragListener) ────────────
@@ -1228,7 +1283,7 @@ public class EditorDropStartup implements IStartup {
                                 }
                                 presentDemoMultiSiteResult(shell, cu, run.result(),
                                         "intra-editor-move\u2192Command Action 02 (EM)",
-                                        run.rangesApplied());
+                                        run.rangesApplied(), editor);
                             }
                         } catch (Exception ex) {
                             MessageDialog.openError(shell, "Extract failed",
@@ -1258,7 +1313,9 @@ public class EditorDropStartup implements IStartup {
                     final int movedStart = gapStart;
                     final int movedEndEx = insOff;
                     final String fp = filePath;
-                    ignoreUntil[0] = now + 3000;
+                    /* Hold through dialog + JDT; short 3s window expires if user pauses before
+                     * confirm + doc.replace, then a second fake drag can stack InputDialog. */
+                    ignoreUntil[0] = Long.MAX_VALUE;
 
                     Display.getDefault().asyncExec(() -> {
                         Shell shell = widget.isDisposed()
@@ -1272,7 +1329,8 @@ public class EditorDropStartup implements IStartup {
                                 v -> v.matches("[a-zA-Z_$][\\w$]*") ? null
                                         : "Please enter a valid Java identifier.");
                         if (dlg.open() != Window.OK) {
-                            ignoreUntil[0] = 0;
+                            ignoreUntil[0] = System.currentTimeMillis()
+                                    + INTRA_DRAG_SILENCE_AFTER_INTRA_REFACTOR_MS;
                             return;
                         }
                         String methodName = dlg.getValue().trim();
@@ -1283,14 +1341,17 @@ public class EditorDropStartup implements IStartup {
                             tryJdtExtractExistingRange(editor, shell, movedStart, movedEndEx,
                                     methodName, fp, "intra-editor-move");
                         } finally {
-                            ignoreUntil[0] = 0;
+                            ignoreUntil[0] = System.currentTimeMillis()
+                                    + INTRA_DRAG_SILENCE_AFTER_INTRA_REFACTOR_MS;
                         }
                     });
                     return;
                 }
 
                 final CloneRecord rec = record;
-                ignoreUntil[0] = now + 3000; // suppress further events while dialog is open
+                /* Same as CA02: 3s is too short if user reads confirm slowly; revert then looks
+                 * like a second drag and stacks generic JDT dialog on top of clone confirm. */
+                ignoreUntil[0] = Long.MAX_VALUE;
 
                 Display.getDefault().asyncExec(() -> {
                     Shell shell = widget.isDisposed()
@@ -1305,7 +1366,8 @@ public class EditorDropStartup implements IStartup {
                             + " clone site(s) will be updated.\nUse Ctrl+Z to undo.");
 
                     if (!ok) {
-                        ignoreUntil[0] = 0; // allow normal edits again
+                        ignoreUntil[0] = System.currentTimeMillis()
+                                + INTRA_DRAG_SILENCE_AFTER_INTRA_REFACTOR_MS;
                         return;
                     }
 
@@ -1315,13 +1377,18 @@ public class EditorDropStartup implements IStartup {
                     } catch (Exception ex) {
                         MessageDialog.openError(shell, "Revert Error",
                                 "Could not revert drag: " + ex.getMessage());
-                        ignoreUntil[0] = 0;
+                        ignoreUntil[0] = System.currentTimeMillis()
+                                + INTRA_DRAG_SILENCE_AFTER_INTRA_REFACTOR_MS;
                         return;
                     }
 
                     // 2. JDT multi-site (same file) or pre-computed JSON
-                    applyCloneRefactoringPreferJdt(shell, filePath, rec, null, -1);
-                    ignoreUntil[0] = 0;
+                    try {
+                        applyCloneRefactoringPreferJdt(shell, filePath, rec, editor, -1);
+                    } finally {
+                        ignoreUntil[0] = System.currentTimeMillis()
+                                + INTRA_DRAG_SILENCE_AFTER_INTRA_REFACTOR_MS;
+                    }
                 });
             }
         });
@@ -1355,17 +1422,84 @@ public class EditorDropStartup implements IStartup {
         CloneRecord found = cid != null ? ctx.recordMap.get(cid) : null;
         if (found != null) { return found; }
 
-        // Normalise separators once for strategies 2 and 3
-        String fileNorm = filePath.replace('\\', '/');
-
+        List<CloneRecord> candidates = new ArrayList<>();
         for (CloneRecord r : ctx.recordMap.values()) {
             if (r.sources == null) { continue; }
             for (CloneRecord.CloneSource src : r.sources) {
                 if (src.file == null) { continue; }
                 if (ClonePathMatch.editorMatchesSourceFile(filePath, src.file, ctx)) {
+                    candidates.add(r);
+                    break;
+                }
+            }
+        }
+        if (candidates.isEmpty()) { return null; }
+        if (candidates.size() == 1) { return candidates.get(0); }
+
+        CloneRecord byGraph = chooseByGraphFocus(candidates, ctx);
+        return byGraph != null ? byGraph : candidates.get(0);
+    }
+
+    private CloneRecord chooseByGraphFocus(List<CloneRecord> candidates, CloneContext ctx) {
+        if (ctx.preferredClassId != null && !ctx.preferredClassId.isBlank()) {
+            for (CloneRecord r : candidates) {
+                if (ctx.preferredClassId.equals(r.classid)) {
                     return r;
                 }
             }
+        }
+
+        List<CloneRecord> projectMatches = new ArrayList<>();
+        if (ctx.preferredProject != null && !ctx.preferredProject.isBlank()) {
+            for (CloneRecord r : candidates) {
+                if (ctx.preferredProject.equals(r.project)) {
+                    projectMatches.add(r);
+                }
+            }
+        } else {
+            projectMatches.addAll(candidates);
+        }
+        if (projectMatches.size() == 1) {
+            return projectMatches.get(0);
+        }
+
+        if (ctx.preferredClassName != null && !ctx.preferredClassName.isBlank()) {
+            for (CloneRecord r : projectMatches) {
+                if (recordContainsClassName(r, ctx.preferredClassName)) {
+                    return r;
+                }
+            }
+        }
+
+        return projectMatches.isEmpty() ? null : projectMatches.get(0);
+    }
+
+    private boolean recordContainsClassName(CloneRecord r, String className) {
+        if (r == null || r.sources == null || className == null) { return false; }
+        for (CloneRecord.CloneSource src : r.sources) {
+            String srcClass = classNameFromSource(src);
+            if (className.equals(srcClass)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String classNameFromSource(CloneRecord.CloneSource src) {
+        if (src == null) { return null; }
+        String qn = (src.enclosing_function != null) ? src.enclosing_function.qualified_name : null;
+        if (qn != null && !qn.isBlank()) {
+            int lastDot = qn.lastIndexOf('.');
+            if (lastDot > 0) {
+                String owner = qn.substring(0, lastDot);
+                int classDot = owner.lastIndexOf('.');
+                return classDot >= 0 ? owner.substring(classDot + 1) : owner;
+            }
+        }
+        if (src.file != null && !src.file.isBlank()) {
+            String name = java.nio.file.Paths.get(src.file.replace('\\', '/')).getFileName().toString();
+            int dot = name.lastIndexOf('.');
+            return dot > 0 ? name.substring(0, dot) : name;
         }
         return null;
     }
