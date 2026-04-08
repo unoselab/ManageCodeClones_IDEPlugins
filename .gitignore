@@ -59,6 +59,7 @@ NiCad-py-block/
 node_modules
 /drag_refactor/out
 .metadata
+.metadata_backup
 
 # macOS app bundle / embedded Eclipse installation
 Eclipse.app/
