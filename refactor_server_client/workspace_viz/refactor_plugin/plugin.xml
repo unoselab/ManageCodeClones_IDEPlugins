@@ -111,7 +111,7 @@
             category="simplezestproject1.category"
             class="view.CloneGraphView"
             id="view.CloneGraphView"
-            name="Clone Graph"
+            name="CODE CLONE VISUALIZATION (CloneViz)"
             restorable="true">
       </view>
 
