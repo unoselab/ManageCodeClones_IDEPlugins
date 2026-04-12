@@ -313,7 +313,26 @@ class ExportQuarkus extends Export {
         }
 
         List<MavenGav> gavs = new ArrayList<>();
-        extractedM1Block1(deps, catalog, gavs);
+        for (String dep : deps) {
+            MavenGav gav = parseMavenGav(dep);
+            String gid = gav.getGroupId();
+            String aid = gav.getArtifactId();
+            // transform to camel-quarkus extension GAV
+            if ("org.apache.camel".equals(gid)) {
+                String qaid = aid.replace("camel-", "camel-quarkus-");
+                ArtifactModel<?> am = catalog.modelFromMavenGAV("org.apache.camel.quarkus", qaid, null);
+                if (am != null) {
+                    // use quarkus extension
+                    gav.setGroupId(am.getGroupId());
+                    gav.setArtifactId(am.getArtifactId());
+                    gav.setVersion(null); // uses BOM so version should not be included
+                } else {
+                    // there is no quarkus extension so use plain camel
+                    gav.setVersion(camelVersion);
+                }
+            }
+            gavs.add(gav);
+        }
 
         // replace dependencies with special quarkus dependencies if we can find any
         replaceQuarkusDependencies(gavs);
@@ -341,7 +360,7 @@ class ExportQuarkus extends Export {
         Files.writeString(gradleBuild, context);
     }
 
-	private void replaceQuarkusDependencies(List<MavenGav> gavs) {
+    private void replaceQuarkusDependencies(List<MavenGav> gavs) {
         // load information about dependencies that should be replaced
         Map<MavenGav, MavenGav> replace = new HashMap<>();
         try {
@@ -454,7 +473,26 @@ class ExportQuarkus extends Export {
         }
 
         List<MavenGav> gavs = new ArrayList<>();
-        extractedM1Block1(deps, catalog, gavs);
+        for (String dep : deps) {
+            MavenGav gav = parseMavenGav(dep);
+            String gid = gav.getGroupId();
+            String aid = gav.getArtifactId();
+            // transform to camel-quarkus extension GAV
+            if ("org.apache.camel".equals(gid)) {
+                String qaid = aid.replace("camel-", "camel-quarkus-");
+                ArtifactModel<?> am = catalog.modelFromMavenGAV("org.apache.camel.quarkus", qaid, null);
+                if (am != null) {
+                    // use quarkus extension
+                    gav.setGroupId(am.getGroupId());
+                    gav.setArtifactId(am.getArtifactId());
+                    gav.setVersion(null); // uses BOM so version should not be included
+                } else {
+                    // there is no quarkus extension so use plain camel
+                    gav.setVersion(camelVersion);
+                }
+            }
+            gavs.add(gav);
+        }
 
         // replace dependencies with special quarkus dependencies if we can find any
         replaceQuarkusDependencies(gavs);
@@ -499,7 +537,7 @@ class ExportQuarkus extends Export {
         Files.writeString(pom, context);
     }
 
-	@Override
+    @Override
     protected Set<String> resolveDependencies(Path settings, Path profile) throws Exception {
         Set<String> answer = super.resolveDependencies(settings, profile);
 
@@ -514,29 +552,6 @@ class ExportQuarkus extends Export {
 
         return answer;
     }
-
-	private void extractedM1Block1(Set<String> deps, CamelCatalog catalog, List<MavenGav> gavs) {
-		for (String dep : deps) {
-            MavenGav gav = parseMavenGav(dep);
-            String gid = gav.getGroupId();
-            String aid = gav.getArtifactId();
-            // transform to camel-quarkus extension GAV
-            if ("org.apache.camel".equals(gid)) {
-                String qaid = aid.replace("camel-", "camel-quarkus-");
-                ArtifactModel<?> am = catalog.modelFromMavenGAV("org.apache.camel.quarkus", qaid, null);
-                if (am != null) {
-                    // use quarkus extension
-                    gav.setGroupId(am.getGroupId());
-                    gav.setArtifactId(am.getArtifactId());
-                    gav.setVersion(null); // uses BOM so version should not be included
-                } else {
-                    // there is no quarkus extension so use plain camel
-                    gav.setVersion(camelVersion);
-                }
-            }
-            gavs.add(gav);
-        }
-	}
 
     private static boolean compareGav(MavenGav g1, MavenGav g2) {
         // only check for groupId and artifactId
