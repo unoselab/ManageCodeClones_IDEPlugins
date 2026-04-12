@@ -67,12 +67,14 @@
             commandId="simplezestproject1.command.togglelayout">
       </handler>
 
+
       <handler
             commandId="refactor_plugin.commands.extractMethodRefactoring"
-            class="your.handler.package.ExtractMethodRefactoringHandler"/>
+            class="view.handlers.ExtractMethodRefactoringHandler"/>
       <handler
             commandId="refactor_plugin.commands.checkExtractable"
-            class="your.handler.package.CheckExtractableHandler"/>
+            class="view.handlers.CheckExtractableHandler"/>
+      
       <handler
             commandId="refactor_plugin.commands.cloneGraphRefresh"
             class="view.handlers.CloneGraphRefreshHandler"/>
