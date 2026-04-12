@@ -48,11 +48,18 @@ import refactor_plugin.model.CloneRecord.CloneSource;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.jface.action.IMenuManager;
+import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.jdt.core.ICompilationUnit;
+
+import refactor_plugin.handlers.extract.ExtractionTarget;
+import refactor_plugin.util.ExtractMethodService;
 
 /**
  * Zest visualization of clones as a <strong>single tree</strong> (like the VS Code D3 panel) with click-to-expand levels: root → package(project) → class → clone instance.
  */
 public class CloneGraphView extends ViewPart {
+
+   private static final String PRJ_ROOT_PATH = "systems/camel-java/";
 
    public static final String ID = "view.CloneGraphView";
 
@@ -320,9 +327,12 @@ public class CloneGraphView extends ViewPart {
       openItem.setText("Open Source for Extract Method");
       openItem.setEnabled(nd.isOpenableSite());
       openItem.addListener(SWT.Selection, e -> {
-         if (nd.isOpenableSite()) {
-            openSource(nd.source, nd.classid);
+         if (!nd.isOpenableSite()) {
+            return;
          }
+
+         openSource(nd.source, nd.classid);
+         runExtractMethodRefactoring(nd);
       });
 
       MenuItem focusItem = new MenuItem(menu, SWT.PUSH);
@@ -331,6 +341,153 @@ public class CloneGraphView extends ViewPart {
          CloneContext.get().setGraphFocus(nd.packageName, nd.className, nd.classid);
          rebuildGraph();
       });
+   }
+
+   private void runExtractMethodRefactoring(NodeData nd) {
+      try {
+         CloneRecord record = nd.record;
+         CloneSource selectedSource = nd.source;
+
+         if (record == null || record.sources == null || record.sources.isEmpty() || selectedSource == null) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "No clone instances are available for extract method refactoring.");
+            return;
+         }
+
+         String relativePath = toProjectRelativeJavaPath(selectedSource);
+         if (relativePath == null) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Could not determine the Java source path for the selected clone instance.");
+            return;
+         }
+
+         List<ExtractionTarget> extractionTargets = buildExtractionTargets(record);
+         if (extractionTargets.isEmpty()) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Could not determine extraction ranges from the selected clone group.");
+            return;
+         }
+
+         String extractedMethodLocation = inferExtractedMethodLocation(selectedSource);
+
+         IWorkspace workspace = ResourcesPlugin.getWorkspace();
+         ExtractMethodService refactorService = new ExtractMethodService();
+         ICompilationUnit cu = refactorService.findCompilationUnitInOpenJavaProjects(workspace, relativePath);
+
+         if (cu == null) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Could not find compilation unit: " + relativePath);
+            return;
+         }
+
+         refactorService.performExtraction(cu, extractionTargets, extractedMethodLocation);
+
+         MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Extract method refactoring completed successfully.");
+
+      } catch (Exception ex) {
+         MessageDialog.openError(getSite().getShell(), "Extract Method Error", "Failed to apply extract method refactoring.\n\n" + ex.getMessage());
+      }
+   }
+
+   private String toProjectRelativeJavaPath(CloneSource src) {
+      if (src == null || src.file == null || src.file.isBlank()) {
+         return null;
+      }
+
+      String normalized = src.file.replace('\\', '/');
+
+      if (normalized.startsWith(PRJ_ROOT_PATH)) {
+         normalized = normalized.substring(PRJ_ROOT_PATH.length());
+      }
+
+      if (normalized.startsWith("/")) {
+         normalized = normalized.substring(1);
+      }
+
+      int srcIdx = normalized.indexOf("/src/");
+      if (srcIdx >= 0) {
+         return normalized.substring(srcIdx + "/src/".length());
+      }
+
+      return normalized;
+   }
+
+   private List<ExtractionTarget> buildExtractionTargets(CloneRecord record) {
+      List<ExtractionTarget> targets = new ArrayList<>();
+
+      if (record == null || record.sources == null || record.sources.isEmpty()) {
+         return targets;
+      }
+
+      class TargetSeed {
+         final int startLine;
+         final int endLine;
+
+         TargetSeed(int startLine, int endLine) {
+            this.startLine = startLine;
+            this.endLine = endLine;
+         }
+      }
+
+      List<TargetSeed> seeds = new ArrayList<>();
+
+      for (CloneSource src : record.sources) {
+         if (src == null || src.range == null || src.range.isBlank()) {
+            continue;
+         }
+
+         int[] lineRange = parseLineRange(src.range);
+         if (lineRange == null) {
+            continue;
+         }
+
+         seeds.add(new TargetSeed(lineRange[0], lineRange[1]));
+      }
+
+      seeds.sort((a, b) -> {
+         int cmp = Integer.compare(a.startLine, b.startLine);
+         if (cmp != 0) {
+            return cmp;
+         }
+         return Integer.compare(a.endLine, b.endLine);
+      });
+
+      int counter = 1;
+      for (int i = 0; i < seeds.size(); i++) {
+         TargetSeed seed = seeds.get(i);
+         boolean primary = (i == 0);
+         String methodName = "extractedM1Block" + counter++;
+
+         targets.add(new ExtractionTarget(seed.startLine, seed.endLine, methodName, primary));
+      }
+
+      return targets;
+   }
+
+   private int[] parseLineRange(String range) {
+      String[] parts = range.split("-");
+      if (parts.length < 2) {
+         return null;
+      }
+
+      try {
+         int start = Integer.parseInt(parts[0].trim());
+         int end = Integer.parseInt(parts[1].trim());
+         if (start <= 0 || end < start) {
+            return null;
+         }
+         return new int[] { start, end };
+      } catch (NumberFormatException ex) {
+         return null;
+      }
+   }
+
+   private String inferExtractedMethodLocation(CloneSource src) {
+      String qn = (src != null && src.enclosing_function != null) ? src.enclosing_function.qualified_name : null;
+
+      if (qn == null || qn.isBlank()) {
+         return "";
+      }
+
+      int lastDot = qn.lastIndexOf('.');
+      String methodName = lastDot >= 0 ? qn.substring(lastDot + 1) : qn;
+      return "After " + methodName + "()";
    }
 
    /** If the Clone Graph part is open, rebuild it (e.g. after JSON load elsewhere). */

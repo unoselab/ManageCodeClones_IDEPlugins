@@ -21,7 +21,9 @@ public class ExtractMethodRefactoringHandler extends AbstractHandler {
    private final String targetRelativePath = "org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java";
    private final String extractedMethodLocation = "After void replaceQuarkusDependencies(List<MavenGav> gavs)";
 
-   private final List<ExtractionTarget> extractionTargets = new ArrayList<>(Arrays.asList(new ExtractionTarget(316, 335, "extractedM1Block1", true), new ExtractionTarget(476, 495, "extractedM1Block2", false)));
+   private final List<ExtractionTarget> extractionTargets = new ArrayList<>(Arrays.asList(//
+         new ExtractionTarget(316, 335, "extractedM1Block1", true), //
+         new ExtractionTarget(476, 495, "extractedM1Block2", false)));
 
    @Override
    public Object execute(ExecutionEvent event) throws ExecutionException {
