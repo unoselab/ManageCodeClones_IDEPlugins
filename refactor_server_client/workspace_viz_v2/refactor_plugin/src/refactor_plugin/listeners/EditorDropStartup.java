@@ -36,6 +36,8 @@ import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.texteditor.ITextEditor;
 
+import view.CloneGraphView;
+
 import refactor_plugin.dnd.DropzoneTransfer;
 import refactor_plugin.model.CloneContext;
 import refactor_plugin.model.CloneRecord;
@@ -108,8 +110,12 @@ public class EditorDropStartup implements IStartup {
             if (wsLoc == null) { return; }
             String base = wsLoc.toOSString();
 
+            String rr = "/refactor_server_client/runtime-refactor_plugin";
             String[] candidates = {
+//                CloneContext.DEFAULT_CLONE_JSON,
+                base + rr + "/systems/all_refactor_results.json",
                 base + "/systems/all_refactor_results.json",
+                base + rr + "/all_refactor_results.json",
                 base + "/all_refactor_results.json",
             };
             for (String jsonPath : candidates) {
@@ -121,16 +127,18 @@ public class EditorDropStartup implements IStartup {
                     List<CloneRecord> records = gson.fromJson(reader, type);
                     if (records != null && !records.isEmpty()) {
                         CloneContext ctx = CloneContext.get();
-                        ctx.workspaceRoot = base;
+                        ctx.workspaceRoot = CloneContext.workspaceRootForCloneJson(jsonPath);
                         ctx.recordMap.clear();
                         for (CloneRecord r : records) {
                             ctx.recordMap.put(r.classid, r);
                         }
                         System.out.println("[refactor_plugin] auto-loaded "
-                            + records.size() + " records from " + jsonPath);
+                            + records.size() + " records from " + jsonPath
+                            + " (workspaceRoot=" + ctx.workspaceRoot + ")");
+                        Display.getDefault().asyncExec(CloneGraphView::refreshIfOpen);
+                        return;
                     }
                 }
-                break; // stop after first successful load
             }
         } catch (Exception e) {
             System.err.println("[refactor_plugin] tryAutoLoadJson FAILED: " + e);
