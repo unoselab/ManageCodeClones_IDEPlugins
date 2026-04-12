@@ -317,7 +317,7 @@ public class CloneGraphView extends ViewPart {
 
    private void buildInstanceMenu(Menu menu, NodeData nd) {
       MenuItem openItem = new MenuItem(menu, SWT.PUSH);
-      openItem.setText("Open Source");
+      openItem.setText("Open Source for Extract Method");
       openItem.setEnabled(nd.isOpenableSite());
       openItem.addListener(SWT.Selection, e -> {
          if (nd.isOpenableSite()) {

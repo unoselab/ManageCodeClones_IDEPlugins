@@ -43,7 +43,7 @@ public class ExtractMethodHandler extends AbstractHandler {
             // Execute the extracted, modular logic
             refactorService.performExtraction(cu, extractionTargets, extractedMethodLocation);
 
-            System.out.println("Success: Extraction, deletion, rebinding, and relocation completed.");
+            System.out.println("[DBG] Success: Extraction, deletion, rebinding, and relocation completed.");
 
         } catch (Exception e) {
             throw new ExecutionException("Failed to apply refactoring workflow.", e);
