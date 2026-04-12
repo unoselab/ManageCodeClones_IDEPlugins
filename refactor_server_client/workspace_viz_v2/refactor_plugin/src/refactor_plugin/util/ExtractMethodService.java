@@ -112,8 +112,9 @@ public class ExtractMethodService {
 
       List<String> secondaryNames = new ArrayList<>();
       for (ExtractionTarget target : extractionTargets) {
-         if (!target.isPrimary())
+         if (!target.isPrimary()) {
             secondaryNames.add(target.getMethodName());
+         }
       }
 
       astRoot.accept(new ASTVisitor() {
@@ -121,8 +122,7 @@ public class ExtractMethodService {
          public boolean visit(MethodInvocation mi) {
             String currentName = mi.getName().getIdentifier();
             if (secondaryNames.contains(currentName)) {
-               AST ast = mi.getAST();
-               SimpleName newName = ast.newSimpleName(primaryMethodName);
+               SimpleName newName = mi.getAST().newSimpleName(primaryMethodName);
                rewriter.set(mi, MethodInvocation.NAME_PROPERTY, newName, null);
             }
             return super.visit(mi);
@@ -134,8 +134,8 @@ public class ExtractMethodService {
       edits.apply(document);
 
       compilationUnit.getBuffer().setContents(document.get());
+      compilationUnit.save(new NullProgressMonitor(), true);
       compilationUnit.reconcile(ICompilationUnit.NO_AST, false, null, null);
-      compilationUnit.commitWorkingCopy(true, new NullProgressMonitor());
    }
 
    private void moveExtractedMethod(ICompilationUnit compilationUnit, List<ExtractionTarget> extractionTargets, String extractedMethodLocation) throws Exception {
@@ -187,8 +187,8 @@ public class ExtractMethodService {
          edits.apply(document);
 
          compilationUnit.getBuffer().setContents(document.get());
+         compilationUnit.save(new NullProgressMonitor(), true);
          compilationUnit.reconcile(ICompilationUnit.NO_AST, false, null, null);
-         compilationUnit.commitWorkingCopy(true, new NullProgressMonitor());
       }
    }
 
