@@ -324,7 +324,7 @@ public class CloneGraphView extends ViewPart {
 
    private void buildInstanceMenu(Menu menu, NodeData nd) {
       MenuItem openItem = new MenuItem(menu, SWT.PUSH);
-      openItem.setText("Open Source for Extract Method");
+      openItem.setText("Open Source");
       openItem.setEnabled(nd.isOpenableSite());
       openItem.addListener(SWT.Selection, e -> {
          if (!nd.isOpenableSite()) {
@@ -332,9 +332,20 @@ public class CloneGraphView extends ViewPart {
          }
 
          openSource(nd.source, nd.classid);
-         runExtractMethodRefactoring(nd);
       });
 
+      MenuItem extractMethodItem = new MenuItem(menu, SWT.PUSH);
+      extractMethodItem.setText("Extract Method Refactoring");
+      extractMethodItem.setEnabled(nd.isOpenableSite());
+      extractMethodItem.addListener(SWT.Selection, e -> {
+         if (!nd.isOpenableSite()) {
+            return;
+         }
+
+//         openSource(nd.source, nd.classid);
+         runExtractMethodRefactoring(nd);
+      });   
+      
       MenuItem focusItem = new MenuItem(menu, SWT.PUSH);
       focusItem.setText("Set Focus to Clone Group");
       focusItem.addListener(SWT.Selection, e -> {

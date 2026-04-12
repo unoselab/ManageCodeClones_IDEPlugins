@@ -2,6 +2,11 @@ package refactor_plugin.model;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.Path;
 
 /**
  * Process-wide singleton holding state shared between the CloneTreeView, DropzoneView, and EditorDropStartup — mirrors the two shared Maps in the VS Code extension's activate() function.
@@ -9,6 +14,7 @@ import java.util.Map;
 public class CloneContext {
 
    private static final CloneContext INSTANCE = new CloneContext();
+   private static final String PRJ_NAME = "camel-java";
 
    /** classid → CloneRecord; populated when the JSON file is loaded. */
    public final Map<String, CloneRecord> recordMap = new HashMap<>();
@@ -22,7 +28,7 @@ public class CloneContext {
    public volatile String preferredProject = null;
    public volatile String preferredClassName = null;
    public volatile String preferredClassId = null;
-   
+
    /**
     * Absolute path to the workspace root (runtime-refactor_plugin/). Used to resolve relative file paths stored in all_refactor_results.json. Set by CloneTreeView when it loads the JSON.
     */
@@ -63,12 +69,48 @@ public class CloneContext {
     */
    public String resolvePath(String filePath) {
       if (filePath == null || filePath.isBlank()) {
-         return filePath;
+         return null;
       }
-      java.io.File f = new java.io.File(filePath);
-      if (f.isAbsolute() && f.exists()) {
-         return filePath;
+
+      String normalized = filePath.replace('\\', '/');
+
+      String repoPrefix = "systems/" + PRJ_NAME + "/";
+      if (normalized.startsWith(repoPrefix)) {
+         normalized = normalized.substring(repoPrefix.length());
       }
-      return workspaceRoot.isEmpty() ? filePath : new java.io.File(workspaceRoot, filePath).getAbsolutePath();
+
+      IWorkspace workspace = ResourcesPlugin.getWorkspace();
+      String[] candidates = { "src/" + normalized };
+
+      for (IProject project : workspace.getRoot().getProjects()) {
+         if (project == null || !project.exists() || !project.isOpen()) {
+            continue;
+         }
+
+         for (String candidate : candidates) {
+            IFile file = project.getFile(new Path(candidate));
+            if (file.exists() && file.getLocation() != null) {
+               return file.getLocation().toOSString();
+            }
+         }
+      }
+
+      return null;
    }
+
+   // public String resolvePath(String filePath) {
+   // String PRJ_NAME = "systems/camel-java/";
+   // String normalized = filePath.replace("systems/camel-java/", filePath);
+   // // 1. Find the path of the current workspace.
+   // // 2. Find the path of the current project based on Step 1.
+   // // 3. Resolve all: the project path + filePath.
+   // if (filePath == null || filePath.isBlank()) {
+   // return filePath;
+   // }
+   // java.io.File f = new java.io.File(filePath);
+   // if (f.isAbsolute() && f.exists()) {
+   // return filePath;
+   // }
+   // return workspaceRoot.isEmpty() ? filePath : new java.io.File(workspaceRoot, filePath).getAbsolutePath();
+   // }
 }
