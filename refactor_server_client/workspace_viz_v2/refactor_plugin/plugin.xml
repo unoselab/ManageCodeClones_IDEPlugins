@@ -186,6 +186,14 @@
 
       <view
             category="simplezestproject1.category"
+            class="view.CloneTreeView"
+            id="view.CloneTreeView"
+            name="Clone Tree"
+            restorable="true">
+      </view>
+
+      <view
+            category="simplezestproject1.category"
             class="view.CloneGraphView"
             id="view.CloneGraphView"
             name="Clone Graph"
@@ -201,11 +209,7 @@
       </view>
    </extension>
 
-   <!-- Command categories must be declared here; view category id alone is not enough. -->
    <extension point="org.eclipse.ui.commands">
-      <category
-            id="simplezestproject1.category"
-            name="Zest Graph &amp; Clone Tools"/>
       <command
             categoryId="simplezestproject1.category"
             id="simplezestproject1.command.cleartext"

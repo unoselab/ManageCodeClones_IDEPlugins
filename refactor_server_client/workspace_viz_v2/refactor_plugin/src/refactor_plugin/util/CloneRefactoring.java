@@ -13,10 +13,6 @@ import java.util.regex.Pattern;
 
 import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
-import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.ui.JavaUI;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.swt.widgets.Shell;
@@ -36,25 +32,7 @@ import refactor_plugin.model.CloneRecord.UpdatedFile;
  * Applies a pre-computed "Extract Method" refactoring for a clone group.
  * Mirrors applyPrecomputedRefactoring() in extension.ts.
  *
- * <p><b>Parallel to {@code README_multi_0408.md}</b> / {@link refactor_plugin.handlers.ExtractMethodWorkflow}
- * when live LTK is unavailable: the README’s rebinding and relocation are <em>materialized</em>
- * in JSON ({@code replacement_code}, {@code extracted_method}). This class preserves
- * <strong>bottom-up</strong> application (descending offsets) and {@link ICompilationUnit#reconcile}
- * after text edits. See README “Applying this guide to drag-and-drop” for the full mapping.
- *
- * <p><b>Concept alignment:</b>
- *
- * <ul>
- *   <li><b>Bottom-up / line-shift:</b> same README idea — resolve ranges from one pristine
- *       document; apply replacement edits in <b>descending offset</b> order
- *       ({@code edits.sort(...reversed())}). Intra-editor drag reverts first so JSON
- *       coordinates stay valid.</li>
- *   <li><b>Java model:</b> {@link ICompilationUnit#reconcile} after edits when the editor
- *       maps to a workspace CU (like after each LTK/AST step in the handler).</li>
- *   <li><b>AST rebind / move:</b> Precomputed in JSON for this path.</li>
- * </ul>
- *
- * <p>Key invariant (mirrors the VS Code implementation):
+ * Key invariant (mirrors the VS Code implementation):
  *   All document offsets are computed from the PRISTINE document BEFORE any
  *   edits are made.  Edits are then applied in DESCENDING offset order so that
  *   no single edit shifts the offsets needed by later (lower-offset) edits.
@@ -127,10 +105,6 @@ public class CloneRefactoring {
             IDocument doc = te.getDocumentProvider().getDocument(te.getEditorInput());
             if (doc == null) { return; }
 
-            // Match ExtractMethodWorkflow: process later source lines before earlier ones
-            // when planning (final application order is still by descending offset).
-            sources.sort(Comparator.comparingInt(CloneRefactoring::rangeStartLine).reversed());
-
             // ── Step 1: compute ALL offsets from the PRISTINE document ────────
             List<Edit> edits = new ArrayList<>();
 
@@ -154,15 +128,13 @@ public class CloneRefactoring {
                 }
             }
 
-            // ── Step 2: apply edits DESCENDING by offset (bottom-up in file) ──
+            // ── Step 2: apply edits DESCENDING by offset ─────────────────────
             // An edit at a higher offset cannot shift the bytes at a lower offset,
             // so later (lower-offset) edits still use correct pristine coordinates.
             edits.sort(Comparator.comparingInt(Edit::offset).reversed());
             for (Edit e : edits) {
                 doc.replace(e.offset(), e.length(), e.text());
             }
-
-            reconcileJavaModelIfPossible(te);
 
         } catch (Exception e) {
             MessageDialog.openError(shell, "Clone Refactoring Error",
@@ -222,28 +194,6 @@ public class CloneRefactoring {
 
         int insertOff = doc.getLineOffset(encEnd0) + closingLine.length();
         return new Edit(insertOff, 0, sb.toString());
-    }
-
-    /**
-     * Keeps JDT in sync after text edits when the editor is a workspace Java file
-     * (cf. {@code ICompilationUnit.reconcile} after each step in {@link refactor_plugin.handlers.ExtractMethodWorkflow}).
-     */
-    private static void reconcileJavaModelIfPossible(ITextEditor editor) {
-        try {
-            IJavaElement je = JavaUI.getEditorInputJavaElement(editor.getEditorInput());
-            if (je instanceof ICompilationUnit icu) {
-                icu.reconcile(ICompilationUnit.NO_AST, false, null,
-                        new NullProgressMonitor());
-            }
-        } catch (Exception ignored) {
-            // Non-workspace / non-Java: skip
-        }
-    }
-
-    /** 1-based start line from {@link CloneSource#range}, or 0 if unparseable. */
-    private static int rangeStartLine(CloneSource src) {
-        int[] r = parseRangeInts(src.range);
-        return r != null ? r[0] : 0;
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

@@ -33,7 +33,7 @@ import refactor_plugin.dnd.DropzoneTransfer;
  * button or by dragging text onto the list), then drag a snippet from this view
  * onto any open editor to trigger either:
  *
- *   • Clone-aware path  — if the target file was opened from the CloneGraphView,
+ *   • Clone-aware path  — if the target file was opened from the CloneTreeView,
  *                         EditorDropStartup applies the pre-computed Extract Method.
  *   • Generic-wrap path — otherwise, prompts for a method name and inserts the
  *                         snippet wrapped in a method definition.

@@ -20,7 +20,6 @@ import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.jface.window.Window;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.dnd.DND;
-import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.dnd.DropTarget;
 import org.eclipse.swt.dnd.DropTargetAdapter;
 import org.eclipse.swt.dnd.DropTargetEvent;
@@ -40,13 +39,10 @@ import org.eclipse.ui.texteditor.ITextEditor;
 import view.CloneGraphView;
 
 import refactor_plugin.dnd.DropzoneTransfer;
-import refactor_plugin.handlers.CloneRecordLiveExtract;
-import refactor_plugin.handlers.ExtractMethodWorkflow;
 import refactor_plugin.model.CloneContext;
 import refactor_plugin.model.CloneRecord;
 import refactor_plugin.util.CloneRefactoring;
 import refactor_plugin.util.WrapHelper;
-import view.CloneGraphView;
 
 /**
  * Early-startup hook that attaches DnD and drag-detection listeners to every
@@ -55,11 +51,8 @@ import view.CloneGraphView;
  * Three drop/drag paths:
  *
  *  1. DropzoneTransfer drop  — snippet dragged from the Dropzone sidebar.
- *       a. Clone-aware : file is part of a loaded clone group → live
- *          {@link refactor_plugin.handlers.ExtractMethodWorkflow} for all same-file
- *          sites in one step (same pipeline as {@link refactor_plugin.handlers.ExtractMethodWorkflow}:
- *          bottom-up LTK, {@code IMethod.delete}, AST rebind/move), else JSON
- *          {@link refactor_plugin.util.CloneRefactoring}.
+ *       a. Clone-aware : file is part of a loaded clone group → apply the
+ *          pre-computed "Extract Method" across all clone sites.
  *       b. Generic wrap: no clone context → prompt for a method name and
  *          insert the snippet wrapped in a language-appropriate function.
  *
@@ -69,13 +62,8 @@ import view.CloneGraphView;
  *  3. Intra-editor drag detection (mirrors VS Code dragListener):
  *       Watches IDocument for a delete+insert pair that indicates the user
  *       dragged a block of code within the same file.  If the file is part of
- *       a clone group, the drag is reverted then the same live / JSON refactor as (1a).
- *
- *       <p>Reverting restores a pristine buffer (README: avoid line-shift before applying
- *       ranges). One gesture refactors every same-file site per {@code README_multi_0408.md}
- *       when {@link refactor_plugin.handlers.CloneRecordLiveExtract} can obtain a workspace
- *       {@code ICompilationUnit}; otherwise {@link refactor_plugin.util.CloneRefactoring}
- *       applies precomputed text with bottom-up offset order and reconcile.
+ *       a clone group, the drag is reverted and the pre-computed Extract Method
+ *       is applied instead.
  */
 public class EditorDropStartup implements IStartup {
 
@@ -84,7 +72,7 @@ public class EditorDropStartup implements IStartup {
         // IStartup.earlyStartup() is already called by Eclipse on a background
         // thread — no extra thread needed here.  Load the JSON first so that
         // CloneContext.recordMap is populated before the user tries a drag-drop,
-        // even if the Clone Graph view has never been opened.
+        // even if the Clone Tree view has never been opened.
         tryAutoLoadJson();
         Display.getDefault().asyncExec(this::attachToCurrentEditors);
     }
@@ -110,7 +98,7 @@ public class EditorDropStartup implements IStartup {
     /**
      * Loads all_refactor_results.json from the runtime workspace into
      * {@link CloneContext} so that drag-drop can find clone records even before
-     * the user opens the Clone Graph view.
+     * the user opens the Clone Tree view.
      *
      * Uses {@code Platform.getLocation()} (the Eclipse runtime workspace root)
      * instead of a hardcoded path so it works on any machine.
@@ -140,15 +128,15 @@ public class EditorDropStartup implements IStartup {
                     if (records != null && !records.isEmpty()) {
                         CloneContext ctx = CloneContext.get();
                         ctx.workspaceRoot = CloneContext.workspaceRootForCloneJson(jsonPath);
-                        ctx.workspaceRoot =
-                                CloneContext.workspaceRootForCloneJson(f.getAbsolutePath());
                         ctx.recordMap.clear();
                         for (CloneRecord r : records) {
                             ctx.recordMap.put(r.classid, r);
                         }
                         System.out.println("[refactor_plugin] auto-loaded "
-                            + records.size() + " records from " + jsonPath);
-                        CloneGraphView.refreshIfOpen();
+                            + records.size() + " records from " + jsonPath
+                            + " (workspaceRoot=" + ctx.workspaceRoot + ")");
+                        Display.getDefault().asyncExec(CloneGraphView::refreshIfOpen);
+                        return;
                     }
                 }
             }
@@ -207,8 +195,7 @@ public class EditorDropStartup implements IStartup {
                             .isSupportedType(event.currentDataType)) {
                         String snippet = (String) event.data;
                         if (snippet != null && !snippet.isBlank()) {
-                            int dropOffset = offsetAtDrop(widget, event);
-                            handleDropzoneSnippet(editor, snippet, shell, dropOffset);
+                            handleDropzoneSnippet(editor, snippet, shell);
                         }
                         return;
                     }
@@ -227,12 +214,7 @@ public class EditorDropStartup implements IStartup {
 
     // ── Handle a drop from the Dropzone sidebar ───────────────────────────────
 
-    /**
-     * @param dropSourceOffset {@link StyledText#getOffsetAtPoint} for the drop, or {@code -1}
-     */
-    private void handleDropzoneSnippet(ITextEditor editor, String snippet, Shell shell,
-            int dropSourceOffset) {
-        int placement = dropSourceOffset >= 0 ? dropSourceOffset : readPlacementCaret(editor);
+    private void handleDropzoneSnippet(ITextEditor editor, String snippet, Shell shell) {
         String      filePath = getEditorFilePath(editor);
         CloneRecord record   = filePath != null ? findRecordForFile(filePath) : null;
         System.out.println("[refactor_plugin] drop: filePath=" + filePath
@@ -240,34 +222,21 @@ public class EditorDropStartup implements IStartup {
             + "  matched=" + (record != null ? record.classid : "null"));
 
         if (record != null) {
-            // ── Clone-aware path (one drop → all same-file sites, e.g. 2 clones) ──
+            // ── Clone-aware path ──────────────────────────────────────────
             boolean confirm = MessageDialog.openConfirm(shell,
                     "Apply Extract Method",
-                    cloneGroupConfirmMessage(record));
+                    "Apply \"Extract Method\" for clone group \""
+                    + record.classid + "\"?\n\n"
+                    + record.sources.size()
+                    + " clone site(s) will be updated together.\n"
+                    + "Use Ctrl+Z to undo.");
             if (!confirm) { return; }
 
-            CloneRecordLiveExtract.Result r =
-                    applyCloneRefactorWithLiveFirst(editor, shell, record, filePath, placement);
-            if (r != CloneRecordLiveExtract.Result.FAILED) {
-                MessageDialog.openInformation(shell, "Extract Method Applied",
-                        "Extract method applied for " + record.classid
-                        + " \u2014 " + record.sources.size()
-                        + " clone site(s) updated.");
-            }
-
-        } else if (ExtractMethodWorkflow.isExportQuarkusDemoWorkspacePath(filePath)) {
-            // ── Course demo: same two-site extract as Command Action 02 (no clone JSON) ──
-            boolean ok = MessageDialog.openConfirm(shell,
-                    "Apply Extract Method (demo)",
-                    exportQuarkusDemoConfirmMessage());
-            if (!ok) { return; }
-            CloneRecordLiveExtract.Result r =
-                    CloneRecordLiveExtract.tryApplyExportQuarkusDemo(editor, shell, filePath,
-                            placement);
-            if (r == CloneRecordLiveExtract.Result.SUCCESS) {
-                MessageDialog.openInformation(shell, "Extract Method Applied",
-                        "ExportQuarkus demo: both sites extracted and merged (same as Command Action 02).");
-            }
+            CloneRefactoring.apply(shell, record);
+            MessageDialog.openInformation(shell, "Extract Method Applied",
+                    "Extract method applied for " + record.classid
+                    + " \u2014 " + record.sources.size()
+                    + " clone site(s) updated.");
 
         } else {
             // ── Generic wrap path ─────────────────────────────────────────
@@ -311,9 +280,6 @@ public class EditorDropStartup implements IStartup {
      *   post_drag = orig[0..D] + orig[D+N..I] + body + orig[I..]
      *   pre_drag  = post[0..D] + body + post[D..I-N] + post[I..]
      * </pre>
-     *
-     * On confirm, revert then live multi-site extract ({@link CloneRecordLiveExtract})
-     * or JSON fallback ({@link refactor_plugin.util.CloneRefactoring}).
      */
     private void attachDragDetector(ITextEditor editor, StyledText widget) {
         IDocument doc = editor.getDocumentProvider()
@@ -371,10 +337,7 @@ public class EditorDropStartup implements IStartup {
                 String filePath = getEditorFilePath(editor);
                 if (filePath == null) { return; }
                 CloneRecord record = findRecordForFile(filePath);
-                final boolean exportQuarkusDemo =
-                        record == null
-                        && ExtractMethodWorkflow.isExportQuarkusDemoWorkspacePath(filePath);
-                if (record == null && !exportQuarkusDemo) { return; }
+                if (record == null) { return; }
 
                 // Reconstruct the pre-drag document — mirrors VS Code revertDrag():
                 //   pre = post[0..D] + body + post[D..I-N] + post[I..]
@@ -389,7 +352,6 @@ public class EditorDropStartup implements IStartup {
                                 + postDrag.substring(gapEnd);
 
                 final CloneRecord rec = record;
-                final int placement = readPlacementCaret(editor);
                 ignoreUntil[0] = now + 3000; // suppress further events while dialog is open
 
                 Display.getDefault().asyncExec(() -> {
@@ -397,20 +359,19 @@ public class EditorDropStartup implements IStartup {
                             ? Display.getDefault().getActiveShell()
                             : widget.getShell();
 
-                    String confirmTitle = exportQuarkusDemo
-                            ? "Apply Extract Method (demo)"
-                            : "Apply Extract Method";
-                    String confirmMsg = exportQuarkusDemo
-                            ? exportQuarkusDemoConfirmMessage()
-                            : cloneGroupConfirmMessage(rec);
-                    boolean ok = MessageDialog.openConfirm(shell, confirmTitle, confirmMsg);
+                    boolean ok = MessageDialog.openConfirm(shell,
+                            "Apply Extract Method",
+                            "Apply \"Extract Method\" for clone group \""
+                            + rec.classid + "\"?\n\n"
+                            + rec.sources.size()
+                            + " clone site(s) will be updated.\nUse Ctrl+Z to undo.");
 
                     if (!ok) {
                         ignoreUntil[0] = 0; // allow normal edits again
                         return;
                     }
 
-                    // 1. Restore pristine text so line ranges match (JSON or fixed demo lines).
+                    // 1. Revert the drag so line numbers in the JSON match again
                     try {
                         doc.replace(0, doc.getLength(), preDrag);
                     } catch (Exception ex) {
@@ -420,99 +381,15 @@ public class EditorDropStartup implements IStartup {
                         return;
                     }
 
-                    CloneRecordLiveExtract.Result r;
-                    if (exportQuarkusDemo) {
-                        r = CloneRecordLiveExtract.tryApplyExportQuarkusDemo(editor, shell, filePath,
-                                placement);
-                        if (r == CloneRecordLiveExtract.Result.SUCCESS) {
-                            MessageDialog.openInformation(shell, "Extract Method Applied",
-                                    "ExportQuarkus demo: both sites updated (Command Action 02).");
-                        }
-                    } else {
-                        r = applyCloneRefactorWithLiveFirst(editor, shell, rec, filePath, placement);
-                        if (r != CloneRecordLiveExtract.Result.FAILED) {
-                            MessageDialog.openInformation(shell, "Extract Method Applied",
-                                    "Done: " + rec.classid
-                                    + " \u2014 " + rec.sources.size()
-                                    + " site(s) updated.");
-                        }
-                    }
+                    // 2. Apply the pre-computed Extract Method refactoring
+                    CloneRefactoring.apply(shell, rec);
+                    MessageDialog.openInformation(shell, "Extract Method Applied",
+                            "Done: " + rec.classid
+                            + " \u2014 " + rec.sources.size()
+                            + " site(s) updated.");
                 });
             }
         });
-    }
-
-    /**
-     * Explains that one confirm refactors every same-file site (e.g. two clones) using the
-     * {@link refactor_plugin.handlers.ExtractMethodWorkflow} when the workspace CU is available.
-     */
-    private static String cloneGroupConfirmMessage(CloneRecord record) {
-        int n = record.sources != null ? record.sources.size() : 0;
-        return "Apply \"Extract Method\" for clone group \"" + record.classid + "\"?\n\n"
-                + "Same workflow as Command Action 02 (EM): bottom-up extract, Java model "
-                + "deletion of duplicate extracted methods, AST rebind of calls, optional move.\n\n"
-                + "Placement: drop on a line (or put the caret there before OK). Drop/caret inside "
-                + "a method \u2192 move after it; in trailing whitespace before the class "
-                + "closing brace \u2192 end of class; else clone JSON hint.\n\n"
-                + "All " + n + " clone site(s) in this file run in one step (you moved or dropped "
-                + "one instance; both/all ranges in the JSON are updated together).\n\n"
-                + "Use Ctrl+Z to undo.";
-    }
-
-    /** Confirm text when no clone JSON is loaded but the file is the ExportQuarkus demo. */
-    private static String exportQuarkusDemoConfirmMessage() {
-        return "Apply the Command Action 02 ExportQuarkus demo (no clone JSON loaded)?\n\n"
-                + "This runs the same two-site extract as the menu command: lines 316\u2013335 and "
-                + "476\u2013495 \u2192 extractedM1Block1, merge, then move the result.\n\n"
-                + "Placement: drop target (or caret before OK) inside a method \u2192 after it; "
-                + "trailing whitespace before class } \u2192 end of class; else "
-                + "replaceQuarkusDependencies(...) (default).\n\n"
-                + "Use Ctrl+Z to undo.";
-    }
-
-    /**
-     * Tries {@link CloneRecordLiveExtract}; on {@code NOT_APPLICABLE} applies JSON edits.
-     */
-    private static CloneRecordLiveExtract.Result applyCloneRefactorWithLiveFirst(
-            ITextEditor editor, Shell shell, CloneRecord record, String filePath,
-            int placementSourceOffset) {
-        CloneRecordLiveExtract.Result live =
-                CloneRecordLiveExtract.tryApplyLive(editor, shell, record, filePath,
-                        placementSourceOffset);
-        if (live == CloneRecordLiveExtract.Result.NOT_APPLICABLE) {
-            CloneRecordLiveExtract.Result demo =
-                    CloneRecordLiveExtract.tryApplyExportQuarkusDemo(editor, shell, filePath,
-                            placementSourceOffset);
-            if (demo != CloneRecordLiveExtract.Result.NOT_APPLICABLE) {
-                return demo;
-            }
-            CloneRefactoring.apply(shell, record);
-            return CloneRecordLiveExtract.Result.SUCCESS;
-        }
-        return live;
-    }
-
-    private static int readPlacementCaret(ITextEditor editor) {
-        if (editor == null) {
-            return -1;
-        }
-        var sel = editor.getSelectionProvider().getSelection();
-        if (sel instanceof ITextSelection ts) {
-            return ts.getOffset();
-        }
-        return -1;
-    }
-
-    /** Drop coordinates are relative to the {@link StyledText} drop target. */
-    private static int offsetAtDrop(StyledText widget, DropTargetEvent event) {
-        if (widget == null || widget.isDisposed() || event == null) {
-            return -1;
-        }
-        try {
-            return widget.getOffsetAtPoint(new Point(event.x, event.y));
-        } catch (Exception e) {
-            return -1;
-        }
     }
 
     // ── Clone-record lookup (used by both paths) ──────────────────────────────
@@ -523,7 +400,7 @@ public class EditorDropStartup implements IStartup {
      *
      * <ol>
      *   <li>Exact match via {@code lastOpenedByFile} (fastest — set when the
-     *       user double-clicks a source file node in the Clone Graph).</li>
+     *       user double-clicks a source node in the Clone Tree).</li>
      *   <li>Exact resolved-path match using {@code CloneContext.resolvePath()}
      *       (works when {@code workspaceRoot} is set correctly).</li>
      *   <li>Path-suffix match — the absolute OS path always ends with the
@@ -538,7 +415,7 @@ public class EditorDropStartup implements IStartup {
         if (filePath == null) { return null; }
         CloneContext ctx = CloneContext.get();
 
-        // Strategy 1: exact hit from Clone Graph navigation
+        // Strategy 1: exact hit from Clone Tree navigation
         String cid = ctx.lastOpenedByFile.get(filePath);
         CloneRecord found = cid != null ? ctx.recordMap.get(cid) : null;
         if (found != null) { return found; }
@@ -582,7 +459,7 @@ public class EditorDropStartup implements IStartup {
      *    through to {@code null} for those files.
      *
      * 2. {@code IPath} adapter — works for {@code IFileStoreEditorInput}
-     *    (EFS / external files, e.g. opened by CloneGraphView).  Uses
+     *    (EFS / external files, e.g. opened by CloneTreeView).  Uses
      *    {@code makeRelative()} before {@code IPath.append()} to prevent
      *    the silent "absolute IPath passed to append() returns itself" bug.
      *
