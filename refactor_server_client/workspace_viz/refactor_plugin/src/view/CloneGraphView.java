@@ -45,23 +45,34 @@ import refactor_plugin.model.CloneContext;
 import refactor_plugin.model.CloneRecord;
 import refactor_plugin.model.CloneRecord.CloneSource;
 
+import org.eclipse.swt.widgets.Menu;
+import org.eclipse.swt.widgets.MenuItem;
+import org.eclipse.jface.action.IMenuManager;
+import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.jdt.core.ICompilationUnit;
+
+import refactor_plugin.handlers.extract.ExtractionTarget;
+import refactor_plugin.util.ExtractMethodService;
+
 /**
- * Zest visualization of clones as a <strong>single tree</strong> (like the VS Code
- * D3 panel) with click-to-expand levels:
- * root → package(project) → class → clone instance.
+ * Zest visualization of clones as a <strong>single tree</strong> (like the VS Code D3 panel) with click-to-expand levels: root → package(project) → class → clone instance.
  */
 public class CloneGraphView extends ViewPart {
 
+   private static final String PRJ_ROOT_PATH = "systems/camel-java/";
+
    public static final String ID = "view.CloneGraphView";
 
-    private Graph  graph;
-    private Label  hintLabel;
+   private Graph graph;
+   private Label hintLabel;
    /** 0 = tree left→right, 1 = tree top→down, 2 = spring (free) */
-    private int    layoutMode;
+   private int layoutMode;
    private final java.util.Set<String> expandedPackages = new java.util.LinkedHashSet<>();
    private final java.util.Set<String> expandedClasses = new java.util.LinkedHashSet<>();
 
-    private enum NodeType { PACKAGE, CLASS, INSTANCE }
+   private enum NodeType {
+      PACKAGE, CLASS, INSTANCE
+   }
 
    /** Attached to {@link GraphNode#setData(Object)} for double-click handling. */
    private static final class NodeData {
@@ -71,16 +82,15 @@ public class CloneGraphView extends ViewPart {
       final String className;
       final CloneRecord record;
       final CloneSource source;
-        final String      classid;
+      final String classid;
 
-        NodeData(NodeType type, String packageName, String classKey, String className,
-                CloneRecord record, CloneSource source, String classid) {
+      NodeData(NodeType type, String packageName, String classKey, String className, CloneRecord record, CloneSource source, String classid) {
          this.type = type;
          this.packageName = packageName;
          this.classKey = classKey;
          this.className = className;
-            this.record  = record;
-            this.source  = source;
+         this.record = record;
+         this.source = source;
          this.classid = classid;
       }
 
@@ -109,23 +119,23 @@ public class CloneGraphView extends ViewPart {
       container.setLayout(new GridLayout(1, false));
       parent.setLayout(new org.eclipse.swt.layout.FillLayout());
 
-        hintLabel = new Label(container, SWT.WRAP);
-        hintLabel.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
-        hintLabel.setText("Click-to-expand tree: package(project) → class → clone instance. "
-                + "Single-click package/class to expand or collapse. "
-                + "Double-click an instance to open source. Toolbar: Refresh, Toggle layout.");
+      hintLabel = new Label(container, SWT.WRAP);
+      hintLabel.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
+      hintLabel.setText("Click-to-expand tree: package(project) → class → clone instance. " + "Single-click package/class to expand or collapse. " + "Double-click an instance to open source. Toolbar: Refresh, Toggle layout.");
 
       graph = new Graph(container, SWT.NONE);
       graph.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+      createContextMenu();
 
       graph.addMouseListener(new MouseAdapter() {
          @Override
          public void mouseUp(MouseEvent e) {
             // Zest Graph selection is updated after mouse processing; run on next UI tick.
             graph.getDisplay().asyncExec(() -> {
-                    if (graph == null || graph.isDisposed()) { return; }
-                    Object sel = graph.getSelection().isEmpty()
-                            ? null : graph.getSelection().get(0);
+               if (graph == null || graph.isDisposed()) {
+                  return;
+               }
+               Object sel = graph.getSelection().isEmpty() ? null : graph.getSelection().get(0);
                if (sel instanceof GraphNode gn) {
                   Object data = gn.getData();
                   if (data instanceof NodeData nd) {
@@ -137,8 +147,7 @@ public class CloneGraphView extends ViewPart {
 
          @Override
          public void mouseDoubleClick(MouseEvent e) {
-                Object sel = graph.getSelection().isEmpty()
-                        ? null : graph.getSelection().get(0);
+            Object sel = graph.getSelection().isEmpty() ? null : graph.getSelection().get(0);
             if (sel instanceof GraphNode gn) {
                Object data = gn.getData();
                if (data instanceof NodeData nd && nd.isOpenableSite()) {
@@ -149,6 +158,7 @@ public class CloneGraphView extends ViewPart {
       });
 
       contributeToolbar();
+      contributeMainMenu();
       rebuildGraph();
       // Second pass: recordMap may be filled by startup auto-load or Clone Tree
       // after this view is created; refresh once the UI loop runs.
@@ -157,6 +167,338 @@ public class CloneGraphView extends ViewPart {
             rebuildGraph();
          }
       });
+   }
+
+   private void createContextMenu() {
+      Menu menu = new Menu(graph);
+      graph.setMenu(menu);
+
+      menu.addListener(SWT.Show, event -> {
+         // Clear old items every time before showing the popup
+         for (MenuItem item : menu.getItems()) {
+            item.dispose();
+         }
+
+         Object sel = graph.getSelection().isEmpty() ? null : graph.getSelection().get(0);
+
+         if (!(sel instanceof GraphNode gn)) {
+            MenuItem refreshItem = new MenuItem(menu, SWT.PUSH);
+            refreshItem.setText("Refresh");
+            refreshItem.addListener(SWT.Selection, e -> rebuildGraph());
+            return;
+         }
+
+         Object data = gn.getData();
+         if (!(data instanceof NodeData nd)) {
+            MenuItem refreshItem = new MenuItem(menu, SWT.PUSH);
+            refreshItem.setText("Refresh");
+            refreshItem.addListener(SWT.Selection, e -> rebuildGraph());
+            return;
+         }
+
+         switch (nd.type) {
+         case PACKAGE -> buildPackageMenu(menu, nd);
+         case CLASS -> buildClassMenu(menu, nd);
+         case INSTANCE -> buildInstanceMenu(menu, nd);
+         }
+
+         new MenuItem(menu, SWT.SEPARATOR);
+
+         MenuItem refreshItem = new MenuItem(menu, SWT.PUSH);
+         refreshItem.setText("Refresh");
+         refreshItem.addListener(SWT.Selection, e -> rebuildGraph());
+      });
+   }
+
+   private void contributeMainMenu() {
+      IMenuManager mm = getViewSite().getActionBars().getMenuManager();
+
+      mm.add(new Action("Refresh") {
+         @Override
+         public void run() {
+            rebuildGraph();
+         }
+      });
+
+      mm.add(new Action("Toggle Layout") {
+         @Override
+         public void run() {
+            layoutMode = (layoutMode + 1) % 3;
+            applyLayout();
+         }
+      });
+
+      mm.add(new Action("Collapse All") {
+         @Override
+         public void run() {
+            expandedPackages.clear();
+            expandedClasses.clear();
+            CloneContext.get().setGraphFocus(null, null, null);
+            rebuildGraph();
+         }
+      });
+
+      mm.add(new Action("Expand All") {
+         @Override
+         public void run() {
+            expandAllNodes();
+            rebuildGraph();
+         }
+      });
+
+      mm.add(new Action("Open Selected Source") {
+         @Override
+         public void run() {
+            NodeData nd = getSelectedNodeData();
+            if (nd != null && nd.type == NodeType.INSTANCE && nd.isOpenableSite()) {
+               openSource(nd.source, nd.classid);
+            }
+         }
+      });
+   }
+
+   private NodeData getSelectedNodeData() {
+      if (graph == null || graph.isDisposed() || graph.getSelection().isEmpty()) {
+         return null;
+      }
+      Object sel = graph.getSelection().get(0);
+      if (sel instanceof GraphNode gn) {
+         Object data = gn.getData();
+         if (data instanceof NodeData nd) {
+            return nd;
+         }
+      }
+      return null;
+   }
+
+   private void expandAllNodes() {
+      expandedPackages.clear();
+      expandedClasses.clear();
+
+      Map<String, CloneRecord> map = CloneContext.get().recordMap;
+      for (CloneRecord r : map.values()) {
+         if (r.sources == null || r.sources.isEmpty()) {
+            continue;
+         }
+
+         String packageName = (r.project != null && !r.project.isBlank()) ? r.project : "?";
+         expandedPackages.add(packageName);
+
+         for (CloneSource src : r.sources) {
+            SourceMeta meta = SourceMeta.from(src);
+            String classKey = packageName + "|" + meta.className;
+            expandedClasses.add(classKey);
+         }
+      }
+   }
+
+   private void buildPackageMenu(Menu menu, NodeData nd) {
+      boolean expanded = expandedPackages.contains(nd.packageName);
+
+      MenuItem toggleItem = new MenuItem(menu, SWT.PUSH);
+      toggleItem.setText(expanded ? "Collapse Package" : "Expand Package");
+      toggleItem.addListener(SWT.Selection, e -> onNodeSingleClick(nd));
+
+      MenuItem focusItem = new MenuItem(menu, SWT.PUSH);
+      focusItem.setText("Set Focus to Package");
+      focusItem.addListener(SWT.Selection, e -> {
+         CloneContext.get().setGraphFocus(nd.packageName, null, null);
+         rebuildGraph();
+      });
+   }
+
+   private void buildClassMenu(Menu menu, NodeData nd) {
+      boolean expanded = expandedClasses.contains(nd.classKey);
+
+      MenuItem toggleItem = new MenuItem(menu, SWT.PUSH);
+      toggleItem.setText(expanded ? "Collapse Class" : "Expand Class");
+      toggleItem.addListener(SWT.Selection, e -> onNodeSingleClick(nd));
+
+      MenuItem focusItem = new MenuItem(menu, SWT.PUSH);
+      focusItem.setText("Set Focus to Class");
+      focusItem.addListener(SWT.Selection, e -> {
+         CloneContext.get().setGraphFocus(nd.packageName, nd.className, null);
+         rebuildGraph();
+      });
+   }
+
+   private void buildInstanceMenu(Menu menu, NodeData nd) {
+      MenuItem openItem = new MenuItem(menu, SWT.PUSH);
+      openItem.setText("Open Source");
+      openItem.setEnabled(nd.isOpenableSite());
+      openItem.addListener(SWT.Selection, e -> {
+         if (!nd.isOpenableSite()) {
+            return;
+         }
+
+         openSource(nd.source, nd.classid);
+      });
+
+      MenuItem extractMethodItem = new MenuItem(menu, SWT.PUSH);
+      extractMethodItem.setText("Extract Method Refactoring");
+      extractMethodItem.setEnabled(nd.isOpenableSite());
+      extractMethodItem.addListener(SWT.Selection, e -> {
+         if (!nd.isOpenableSite()) {
+            return;
+         }
+
+//         openSource(nd.source, nd.classid);
+         runExtractMethodRefactoring(nd);
+      });   
+      
+      MenuItem focusItem = new MenuItem(menu, SWT.PUSH);
+      focusItem.setText("Set Focus to Clone Group");
+      focusItem.addListener(SWT.Selection, e -> {
+         CloneContext.get().setGraphFocus(nd.packageName, nd.className, nd.classid);
+         rebuildGraph();
+      });
+   }
+
+   private void runExtractMethodRefactoring(NodeData nd) {
+      try {
+         CloneRecord record = nd.record;
+         CloneSource selectedSource = nd.source;
+
+         if (record == null || record.sources == null || record.sources.isEmpty() || selectedSource == null) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "No clone instances are available for extract method refactoring.");
+            return;
+         }
+
+         String relativePath = toProjectRelativeJavaPath(selectedSource);
+         if (relativePath == null) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Could not determine the Java source path for the selected clone instance.");
+            return;
+         }
+
+         List<ExtractionTarget> extractionTargets = buildExtractionTargets(record);
+         if (extractionTargets.isEmpty()) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Could not determine extraction ranges from the selected clone group.");
+            return;
+         }
+
+         String extractedMethodLocation = inferExtractedMethodLocation(selectedSource);
+
+         IWorkspace workspace = ResourcesPlugin.getWorkspace();
+         ExtractMethodService refactorService = new ExtractMethodService();
+         ICompilationUnit cu = refactorService.findCompilationUnitInOpenJavaProjects(workspace, relativePath);
+
+         if (cu == null) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Could not find compilation unit: " + relativePath);
+            return;
+         }
+
+         refactorService.performExtraction(cu, extractionTargets, extractedMethodLocation);
+
+         MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Extract method refactoring completed successfully.");
+
+      } catch (Exception ex) {
+         MessageDialog.openError(getSite().getShell(), "Extract Method Error", "Failed to apply extract method refactoring.\n\n" + ex.getMessage());
+      }
+   }
+
+   private String toProjectRelativeJavaPath(CloneSource src) {
+      if (src == null || src.file == null || src.file.isBlank()) {
+         return null;
+      }
+
+      String normalized = src.file.replace('\\', '/');
+
+      if (normalized.startsWith(PRJ_ROOT_PATH)) {
+         normalized = normalized.substring(PRJ_ROOT_PATH.length());
+      }
+
+      if (normalized.startsWith("/")) {
+         normalized = normalized.substring(1);
+      }
+
+      int srcIdx = normalized.indexOf("/src/");
+      if (srcIdx >= 0) {
+         return normalized.substring(srcIdx + "/src/".length());
+      }
+
+      return normalized;
+   }
+
+   private List<ExtractionTarget> buildExtractionTargets(CloneRecord record) {
+      List<ExtractionTarget> targets = new ArrayList<>();
+
+      if (record == null || record.sources == null || record.sources.isEmpty()) {
+         return targets;
+      }
+
+      class TargetSeed {
+         final int startLine;
+         final int endLine;
+
+         TargetSeed(int startLine, int endLine) {
+            this.startLine = startLine;
+            this.endLine = endLine;
+         }
+      }
+
+      List<TargetSeed> seeds = new ArrayList<>();
+
+      for (CloneSource src : record.sources) {
+         if (src == null || src.range == null || src.range.isBlank()) {
+            continue;
+         }
+
+         int[] lineRange = parseLineRange(src.range);
+         if (lineRange == null) {
+            continue;
+         }
+
+         seeds.add(new TargetSeed(lineRange[0], lineRange[1]));
+      }
+
+      seeds.sort((a, b) -> {
+         int cmp = Integer.compare(a.startLine, b.startLine);
+         if (cmp != 0) {
+            return cmp;
+         }
+         return Integer.compare(a.endLine, b.endLine);
+      });
+
+      int counter = 1;
+      for (int i = 0; i < seeds.size(); i++) {
+         TargetSeed seed = seeds.get(i);
+         boolean primary = (i == 0);
+         String methodName = "extractedM1Block" + counter++;
+
+         targets.add(new ExtractionTarget(seed.startLine, seed.endLine, methodName, primary));
+      }
+
+      return targets;
+   }
+
+   private int[] parseLineRange(String range) {
+      String[] parts = range.split("-");
+      if (parts.length < 2) {
+         return null;
+      }
+
+      try {
+         int start = Integer.parseInt(parts[0].trim());
+         int end = Integer.parseInt(parts[1].trim());
+         if (start <= 0 || end < start) {
+            return null;
+         }
+         return new int[] { start, end };
+      } catch (NumberFormatException ex) {
+         return null;
+      }
+   }
+
+   private String inferExtractedMethodLocation(CloneSource src) {
+      String qn = (src != null && src.enclosing_function != null) ? src.enclosing_function.qualified_name : null;
+
+      if (qn == null || qn.isBlank()) {
+         return "";
+      }
+
+      int lastDot = qn.lastIndexOf('.');
+      String methodName = lastDot >= 0 ? qn.substring(lastDot + 1) : qn;
+      return "After " + methodName + "()";
    }
 
    /** If the Clone Graph part is open, rebuild it (e.g. after JSON load elsewhere). */
@@ -186,10 +528,14 @@ public class CloneGraphView extends ViewPart {
       IToolBarManager tbm = getViewSite().getActionBars().getToolBarManager();
 
       tbm.add(new Action("Refresh") {
-            @Override public void run() { rebuildGraph(); }
+         @Override
+         public void run() {
+            rebuildGraph();
+         }
       });
       tbm.add(new Action("Toggle layout") {
-            @Override public void run() {
+         @Override
+         public void run() {
             layoutMode = (layoutMode + 1) % 3;
             applyLayout();
          }
@@ -197,24 +543,28 @@ public class CloneGraphView extends ViewPart {
    }
 
    private void applyLayout() {
-        if (graph == null || graph.isDisposed()) { return; }
+      if (graph == null || graph.isDisposed()) {
+         return;
+      }
       switch (layoutMode) {
-            case 0 -> graph.setLayoutAlgorithm(
-                    new TreeLayoutAlgorithm(TreeLayoutAlgorithm.LEFT_RIGHT), true);
+      case 0 -> graph.setLayoutAlgorithm(new TreeLayoutAlgorithm(TreeLayoutAlgorithm.LEFT_RIGHT), true);
       case 1 -> graph.setLayoutAlgorithm(new TreeLayoutAlgorithm(), true);
       case 2 -> graph.setLayoutAlgorithm(new SpringLayoutAlgorithm(), true);
-            default -> graph.setLayoutAlgorithm(
-                    new TreeLayoutAlgorithm(TreeLayoutAlgorithm.LEFT_RIGHT), true);
+      default -> graph.setLayoutAlgorithm(new TreeLayoutAlgorithm(TreeLayoutAlgorithm.LEFT_RIGHT), true);
       }
    }
 
    /** Rebuilds connected tree with click-based expand/collapse state. */
    public void rebuildGraph() {
-        if (graph == null || graph.isDisposed()) { return; }
+      if (graph == null || graph.isDisposed()) {
+         return;
+      }
 
       List<?> oldNodes = new ArrayList<>(graph.getNodes());
       for (Object n : oldNodes) {
-            if (n instanceof GraphNode gn) { gn.dispose(); }
+         if (n instanceof GraphNode gn) {
+            gn.dispose();
+         }
       }
 
       Map<String, CloneRecord> map = CloneContext.get().recordMap;
@@ -227,15 +577,13 @@ public class CloneGraphView extends ViewPart {
       }
 
       Display d = graph.getDisplay();
-        Color cRoot     = d.getSystemColor(SWT.COLOR_GRAY);
-        Color cPackage  = d.getSystemColor(SWT.COLOR_WIDGET_LIGHT_SHADOW);
-        Color cClass    = d.getSystemColor(SWT.COLOR_WIDGET_BACKGROUND);
+      Color cRoot = d.getSystemColor(SWT.COLOR_GRAY);
+      Color cPackage = d.getSystemColor(SWT.COLOR_WIDGET_LIGHT_SHADOW);
+      Color cClass = d.getSystemColor(SWT.COLOR_WIDGET_BACKGROUND);
       Color cInstance = d.getSystemColor(SWT.COLOR_CYAN);
 
       List<CloneRecord> records = new ArrayList<>(map.values());
-        records.sort(Comparator
-                .comparing((CloneRecord r) -> r.project != null ? r.project : "")
-                .thenComparing(r -> r.classid != null ? r.classid : ""));
+      records.sort(Comparator.comparing((CloneRecord r) -> r.project != null ? r.project : "").thenComparing(r -> r.classid != null ? r.classid : ""));
 
       GraphNode root = new GraphNode(graph, SWT.NONE);
       root.setText("Code clones");
@@ -246,11 +594,12 @@ public class CloneGraphView extends ViewPart {
       Map<String, GraphNode> classNodes = new HashMap<>();
 
       for (CloneRecord r : records) {
-            if (r.sources == null || r.sources.isEmpty()) { continue; }
+         if (r.sources == null || r.sources.isEmpty()) {
+            continue;
+         }
          for (CloneSource src : r.sources) {
             SourceMeta meta = SourceMeta.from(src);
-                String packageName = (r.project != null && !r.project.isBlank())
-                        ? r.project : "?";
+            String packageName = (r.project != null && !r.project.isBlank()) ? r.project : "?";
             GraphNode pkg = packageNodes.computeIfAbsent(packageName, name -> {
                GraphNode node = new GraphNode(graph, SWT.NONE);
                node.setText(name);
@@ -260,7 +609,9 @@ public class CloneGraphView extends ViewPart {
                return node;
             });
 
-                if (!expandedPackages.contains(packageName)) { continue; }
+            if (!expandedPackages.contains(packageName)) {
+               continue;
+            }
 
             String classKey = packageName + "|" + meta.className;
             GraphNode cls = classNodes.computeIfAbsent(classKey, key -> {
@@ -272,7 +623,9 @@ public class CloneGraphView extends ViewPart {
                return node;
             });
 
-                if (!expandedClasses.contains(classKey)) { continue; }
+            if (!expandedClasses.contains(classKey)) {
+               continue;
+            }
 
             GraphNode leaf = new GraphNode(graph, SWT.NONE);
             leaf.setText(instanceLabel(src, r));
@@ -288,9 +641,7 @@ public class CloneGraphView extends ViewPart {
    }
 
    private static String instanceLabel(CloneSource src, CloneRecord r) {
-        String fname = src.file != null
-                ? java.nio.file.Paths.get(src.file).getFileName().toString()
-                : "?";
+      String fname = src.file != null ? java.nio.file.Paths.get(src.file).getFileName().toString() : "?";
       String range = src.range != null ? src.range : "?";
       String cid = r.classid != null ? r.classid : "?";
       return fname + "\n(" + range + ", group " + cid + ")";
@@ -334,8 +685,7 @@ public class CloneGraphView extends ViewPart {
          String packageName = "(default package)";
          String className = "(unknown class)";
 
-            String qn = (src != null && src.enclosing_function != null)
-                    ? src.enclosing_function.qualified_name : null;
+         String qn = (src != null && src.enclosing_function != null) ? src.enclosing_function.qualified_name : null;
          if (qn != null && !qn.isBlank()) {
             String[] parts = qn.split("\\.");
             if (parts.length >= 2) {
@@ -346,8 +696,7 @@ public class CloneGraphView extends ViewPart {
             }
          }
 
-            if ((className.equals("(unknown class)") || packageName.equals("(default package)"))
-                    && src != null && src.file != null && !src.file.isBlank()) {
+         if ((className.equals("(unknown class)") || packageName.equals("(default package)")) && src != null && src.file != null && !src.file.isBlank()) {
             java.nio.file.Path p = java.nio.file.Paths.get(src.file.replace('\\', '/'));
             java.nio.file.Path fileName = p.getFileName();
             if (fileName != null && className.equals("(unknown class)")) {
@@ -371,19 +720,19 @@ public class CloneGraphView extends ViewPart {
    }
 
    private void openSource(CloneSource src, String classid) {
-        if (src.file == null || src.file.isBlank()) { return; }
+      if (src.file == null || src.file.isBlank()) {
+         return;
+      }
       String absPath = CloneContext.get().resolvePath(src.file);
 
       try {
-            IWorkbenchPage page = PlatformUI.getWorkbench()
-                                            .getActiveWorkbenchWindow()
-                                            .getActivePage();
+         IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
          IEditorPart editor;
-            IFile wsFile = ResourcesPlugin.getWorkspace().getRoot()
-                    .getFileForLocation(Path.fromOSString(absPath));
+         IFile wsFile = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(Path.fromOSString(absPath));
          if (wsFile != null && wsFile.exists()) {
             editor = IDE.openEditor(page, wsFile, true);
-            } else {
+         }
+         else {
             URI fileUri = new File(absPath).toURI();
             IFileStore store = EFS.getLocalFileSystem().getStore(fileUri);
             editor = IDE.openEditorOnFileStore(page, store);
@@ -394,23 +743,18 @@ public class CloneGraphView extends ViewPart {
          if (editor instanceof ITextEditor te && src.range != null) {
             String[] parts = src.range.split("-");
             if (parts.length >= 2) {
-                    IDocument doc = te.getDocumentProvider()
-                                      .getDocument(te.getEditorInput());
+               IDocument doc = te.getDocumentProvider().getDocument(te.getEditorInput());
                if (doc != null) {
-                        int startLine = Math.max(0,
-                                Integer.parseInt(parts[0].trim()) - 1);
-                        int endLine   = Math.min(doc.getNumberOfLines() - 1,
-                                Integer.parseInt(parts[1].trim()) - 1);
-                        int startOff  = doc.getLineOffset(startLine);
-                        int endOff    = doc.getLineOffset(endLine)
-                                      + doc.getLineLength(endLine);
+                  int startLine = Math.max(0, Integer.parseInt(parts[0].trim()) - 1);
+                  int endLine = Math.min(doc.getNumberOfLines() - 1, Integer.parseInt(parts[1].trim()) - 1);
+                  int startOff = doc.getLineOffset(startLine);
+                  int endOff = doc.getLineOffset(endLine) + doc.getLineLength(endLine);
                   te.selectAndReveal(startOff, endOff - startOff);
                }
             }
          }
       } catch (Exception e) {
-            MessageDialog.openError(getSite().getShell(), "Open File Error",
-                    "Cannot open: " + absPath + "\n\n" + e.getMessage());
+         MessageDialog.openError(getSite().getShell(), "Open File Error", "Cannot open: " + absPath + "\n\n" + e.getMessage());
       }
    }
 
@@ -418,6 +762,38 @@ public class CloneGraphView extends ViewPart {
    public void setFocus() {
       if (graph != null && !graph.isDisposed()) {
          graph.setFocus();
+      }
+   }
+
+   public void expandAll() {
+      expandAllNodes();
+      rebuildGraph();
+   }
+
+   public void collapseAll() {
+      expandedPackages.clear();
+      expandedClasses.clear();
+      CloneContext.get().setGraphFocus(null, null, null);
+      rebuildGraph();
+   }
+
+   public static CloneGraphView getOpenView() {
+      try {
+         if (PlatformUI.getWorkbench() == null) {
+            return null;
+         }
+         var win = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+         if (win == null) {
+            return null;
+         }
+         IWorkbenchPage page = win.getActivePage();
+         if (page == null) {
+            return null;
+         }
+         IViewPart v = page.findView(CloneGraphView.ID);
+         return (v instanceof CloneGraphView cg) ? cg : null;
+      } catch (Exception e) {
+         return null;
       }
    }
 }

@@ -1,6 +1,7 @@
 package refactor_plugin.dnd;
 
 import org.eclipse.swt.dnd.ByteArrayTransfer;
+import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.dnd.TransferData;
 
 /**
@@ -18,7 +19,24 @@ public class DropzoneTransfer extends ByteArrayTransfer {
 
     private DropzoneTransfer() {}
 
-    public static DropzoneTransfer getInstance() { return INSTANCE; }
+    /** Declared as {@link Transfer} so callers (e.g. {@code Transfer[]}) resolve cleanly. */
+    public static Transfer getInstance() {
+        return INSTANCE;
+    }
+
+    @Override
+    public boolean isSupportedType(TransferData transferData) {
+        if (transferData == null) {
+            return false;
+        }
+        final int[] types = getTypeIds();
+        for (int i = 0; i < types.length; i++) {
+            if (transferData.type == types[i]) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     @Override protected String[] getTypeNames() { return new String[]{ TYPE_NAME }; }
     @Override protected int[]    getTypeIds()   { return new int[]{ TYPE_ID }; }
@@ -38,14 +56,5 @@ public class DropzoneTransfer extends ByteArrayTransfer {
         try {
             return new String(bytes, "UTF-8");
         } catch (java.io.UnsupportedEncodingException e) { return null; }
-    }
-
-    /**
-     * Public bridge so drop targets can test {@code event.currentDataType} (same pattern as
-     * {@link org.eclipse.swt.dnd.TextTransfer#getInstance()}).
-     */
-    @Override
-    public boolean isSupportedType(TransferData transferData) {
-        return super.isSupportedType(transferData);
     }
 }

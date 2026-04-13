@@ -1,3 +1,0 @@
-INDEX VERSION 1.134
-file:/Users/dreamxia/2025_Dr.Song/ManageCodeClones_IDEPlugins/refactor_server_client/workspace_viz/refactor_plugin/.metadata/.plugins/org.eclipse.jdt.core/1865797976.index
-meta_index

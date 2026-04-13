@@ -1,8 +1,6 @@
 package refactor_plugin.util;
 
-import java.io.File;
 import java.net.URI;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -15,15 +13,14 @@ import java.util.regex.Pattern;
 
 import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
-import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.Path;
-import org.eclipse.core.runtime.Platform;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IJavaElement;
+import org.eclipse.jdt.ui.JavaUI;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorPart;
-import org.eclipse.ui.IFileEditorInput;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
@@ -38,15 +35,26 @@ import refactor_plugin.model.CloneRecord.UpdatedFile;
 /**
  * Applies a pre-computed "Extract Method" refactoring for a clone group.
  * Mirrors applyPrecomputedRefactoring() in extension.ts.
- * <p>
- * <strong>Not driven by drop coordinates:</strong> all edits come from JSON
- * {@code sources[].range}, {@code replacement_code}, and optional {@code extracted_method}.
- * The user never chooses the insert offset. That contrasts with Dropzone &rarr; editor, where
- * {@link refactor_plugin.listeners.EditorDropStartup} uses {@code resolveDropOffset} for
- * insert-at-drop + JDT, or &mdash; on the ExportQuarkus demo &mdash; optional Command Action 02
- * at existing clone lines when the dropped text matches those clones.
- * <p>
- * Key invariant (mirrors the VS Code implementation):
+ *
+ * <p><b>Parallel to {@code README_multi_0408.md}</b> / {@link refactor_plugin.handlers.ExtractMethodWorkflow}
+ * when live LTK is unavailable: the README’s rebinding and relocation are <em>materialized</em>
+ * in JSON ({@code replacement_code}, {@code extracted_method}). This class preserves
+ * <strong>bottom-up</strong> application (descending offsets) and {@link ICompilationUnit#reconcile}
+ * after text edits. See README “Applying this guide to drag-and-drop” for the full mapping.
+ *
+ * <p><b>Concept alignment:</b>
+ *
+ * <ul>
+ *   <li><b>Bottom-up / line-shift:</b> same README idea — resolve ranges from one pristine
+ *       document; apply replacement edits in <b>descending offset</b> order
+ *       ({@code edits.sort(...reversed())}). Intra-editor drag reverts first so JSON
+ *       coordinates stay valid.</li>
+ *   <li><b>Java model:</b> {@link ICompilationUnit#reconcile} after edits when the editor
+ *       maps to a workspace CU (like after each LTK/AST step in the handler).</li>
+ *   <li><b>AST rebind / move:</b> Precomputed in JSON for this path.</li>
+ * </ul>
+ *
+ * <p>Key invariant (mirrors the VS Code implementation):
  *   All document offsets are computed from the PRISTINE document BEFORE any
  *   edits are made.  Edits are then applied in DESCENDING offset order so that
  *   no single edit shifts the offsets needed by later (lower-offset) edits.
@@ -68,18 +76,7 @@ public class CloneRefactoring {
      * edits from the pristine document, then applies them highest-offset-first.
      * Must be called on the UI thread.
      */
-    public static void apply(org.eclipse.swt.widgets.Shell shell, CloneRecord record) {
-        apply(shell, record, null);
-    }
-
-    /**
-     * @param reuseEditorIfSamePath when non-null and its file path matches a target file,
-     *                              that editor's document is used instead of
-     *                              {@link IDE#openEditorOnFileStore} (avoids a second editor tab /
-     *                              OS handler on Dropzone refactor).
-     */
-    public static void apply(org.eclipse.swt.widgets.Shell shell, CloneRecord record,
-            ITextEditor reuseEditorIfSamePath) {
+    public static void apply(Shell shell, CloneRecord record) {
         if (record.sources == null || record.sources.isEmpty()) { return; }
 
         // Group sources by resolved absolute file path so each file is opened once.
@@ -109,42 +106,30 @@ public class CloneRefactoring {
             boolean doInsert = insertMethodIn.isEmpty()
                                || insertMethodIn.contains(absFile);
             applyToFile(shell, absFile, entry.getValue(),
-                        doInsert ? record.extracted_method : null, reuseEditorIfSamePath);
+                        doInsert ? record.extracted_method : null);
         }
     }
 
     // ── apply all edits for one file ──────────────────────────────────────────
 
-    private static void applyToFile(org.eclipse.swt.widgets.Shell shell, String absFile,
+    private static void applyToFile(Shell shell, String absFile,
                                      List<CloneSource> sources,
-                                     ExtractedMethod em,
-                                     ITextEditor reuseIfSamePath) {
+                                     ExtractedMethod em) {
         try {
             URI fileUri = new java.io.File(absFile).toURI();
             IFileStore    fileStore = EFS.getLocalFileSystem().getStore(fileUri);
             IWorkbenchPage page     = PlatformUI.getWorkbench()
                                                 .getActiveWorkbenchWindow()
                                                 .getActivePage();
-            ITextEditor te = null;
-            if (reuseIfSamePath != null
-                    && pathsEqualNormalized(absFile, pathFromTextEditor(reuseIfSamePath))) {
-                te = reuseIfSamePath;
-            }
-            if (te == null) {
-                IEditorPart editor;
-                IFile wsFile = ResourcesPlugin.getWorkspace().getRoot()
-                        .getFileForLocation(Path.fromOSString(absFile));
-                if (wsFile != null && wsFile.exists()) {
-                    editor = IDE.openEditor(page, wsFile, true);
-                } else {
-                    editor = IDE.openEditorOnFileStore(page, fileStore);
-                }
-                if (!(editor instanceof ITextEditor opened)) { return; }
-                te = opened;
-            }
+            IEditorPart editor = IDE.openEditorOnFileStore(page, fileStore);
+            if (!(editor instanceof ITextEditor te)) { return; }
 
             IDocument doc = te.getDocumentProvider().getDocument(te.getEditorInput());
             if (doc == null) { return; }
+
+            // Match ExtractMethodWorkflow: process later source lines before earlier ones
+            // when planning (final application order is still by descending offset).
+            sources.sort(Comparator.comparingInt(CloneRefactoring::rangeStartLine).reversed());
 
             // ── Step 1: compute ALL offsets from the PRISTINE document ────────
             List<Edit> edits = new ArrayList<>();
@@ -169,13 +154,15 @@ public class CloneRefactoring {
                 }
             }
 
-            // ── Step 2: apply edits DESCENDING by offset ─────────────────────
+            // ── Step 2: apply edits DESCENDING by offset (bottom-up in file) ──
             // An edit at a higher offset cannot shift the bytes at a lower offset,
             // so later (lower-offset) edits still use correct pristine coordinates.
             edits.sort(Comparator.comparingInt(Edit::offset).reversed());
             for (Edit e : edits) {
                 doc.replace(e.offset(), e.length(), e.text());
             }
+
+            reconcileJavaModelIfPossible(te);
 
         } catch (Exception e) {
             MessageDialog.openError(shell, "Clone Refactoring Error",
@@ -237,47 +224,29 @@ public class CloneRefactoring {
         return new Edit(insertOff, 0, sb.toString());
     }
 
+    /**
+     * Keeps JDT in sync after text edits when the editor is a workspace Java file
+     * (cf. {@code ICompilationUnit.reconcile} after each step in {@link refactor_plugin.handlers.ExtractMethodWorkflow}).
+     */
+    private static void reconcileJavaModelIfPossible(ITextEditor editor) {
+        try {
+            IJavaElement je = JavaUI.getEditorInputJavaElement(editor.getEditorInput());
+            if (je instanceof ICompilationUnit icu) {
+                icu.reconcile(ICompilationUnit.NO_AST, false, null,
+                        new NullProgressMonitor());
+            }
+        } catch (Exception ignored) {
+            // Non-workspace / non-Java: skip
+        }
+    }
+
+    /** 1-based start line from {@link CloneSource#range}, or 0 if unparseable. */
+    private static int rangeStartLine(CloneSource src) {
+        int[] r = parseRangeInts(src.range);
+        return r != null ? r[0] : 0;
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
-
-    private static boolean pathsEqualNormalized(String a, String b) {
-        if (a == null || b == null) {
-            return false;
-        }
-        try {
-            return Paths.get(a).normalize().equals(Paths.get(b).normalize());
-        } catch (Exception e) {
-            return a.equals(b);
-        }
-    }
-
-    private static String pathFromTextEditor(ITextEditor ed) {
-        var input = ed.getEditorInput();
-        if (input instanceof IFileEditorInput fei) {
-            IFile file = fei.getFile();
-            if (file != null && file.getLocation() != null) {
-                return file.getLocation().toOSString();
-            }
-        }
-        IPath ipath = input.getAdapter(IPath.class);
-        if (ipath != null) {
-            String s = ipath.toOSString();
-            if (new File(s).exists()) {
-                return s;
-            }
-            IPath wsLoc = Platform.getLocation();
-            if (wsLoc != null) {
-                return wsLoc.append(ipath.makeRelative()).toOSString();
-            }
-            return s;
-        }
-        try {
-            URI uri = input.getAdapter(URI.class);
-            if (uri != null) {
-                return Paths.get(uri).toString();
-            }
-        } catch (Exception ignored) { /* skip */ }
-        return null;
-    }
 
     private static int[] parseRangeInts(String range) {
         if (range == null) { return null; }
