@@ -69,12 +69,48 @@ public class CloneContext {
     */
    public String resolvePath(String filePath) {
       if (filePath == null || filePath.isBlank()) {
-         return filePath;
+         return null;
       }
-      java.io.File f = new java.io.File(filePath);
-      if (f.isAbsolute() && f.exists()) {
-         return filePath;
+
+      String normalized = filePath.replace('\\', '/');
+
+      String repoPrefix = "systems/" + PRJ_NAME + "/";
+      if (normalized.startsWith(repoPrefix)) {
+         normalized = normalized.substring(repoPrefix.length());
       }
-      return workspaceRoot.isEmpty() ? filePath : new java.io.File(workspaceRoot, filePath).getAbsolutePath();
+
+      IWorkspace workspace = ResourcesPlugin.getWorkspace();
+      String[] candidates = { "src/" + normalized };
+
+      for (IProject project : workspace.getRoot().getProjects()) {
+         if (project == null || !project.exists() || !project.isOpen()) {
+            continue;
+         }
+
+         for (String candidate : candidates) {
+            IFile file = project.getFile(new Path(candidate));
+            if (file.exists() && file.getLocation() != null) {
+               return file.getLocation().toOSString();
+            }
+         }
+      }
+
+      return null;
    }
+
+   // public String resolvePath(String filePath) {
+   // String PRJ_NAME = "systems/camel-java/";
+   // String normalized = filePath.replace("systems/camel-java/", filePath);
+   // // 1. Find the path of the current workspace.
+   // // 2. Find the path of the current project based on Step 1.
+   // // 3. Resolve all: the project path + filePath.
+   // if (filePath == null || filePath.isBlank()) {
+   // return filePath;
+   // }
+   // java.io.File f = new java.io.File(filePath);
+   // if (f.isAbsolute() && f.exists()) {
+   // return filePath;
+   // }
+   // return workspaceRoot.isEmpty() ? filePath : new java.io.File(workspaceRoot, filePath).getAbsolutePath();
+   // }
 }

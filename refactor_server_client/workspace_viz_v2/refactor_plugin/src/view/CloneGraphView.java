@@ -342,10 +342,10 @@ public class CloneGraphView extends ViewPart {
             return;
          }
 
-//         openSource(nd.source, nd.classid);
+         // openSource(nd.source, nd.classid);
          runExtractMethodRefactoring(nd);
-      });   
-      
+      });
+
       MenuItem focusItem = new MenuItem(menu, SWT.PUSH);
       focusItem.setText("Set Focus to Clone Group");
       focusItem.addListener(SWT.Selection, e -> {
