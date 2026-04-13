@@ -25,6 +25,9 @@ import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import refactor_plugin.dnd.DropzoneTransfer;
+import refactor_plugin.model.CloneContext;
+import refactor_plugin.model.CloneRecord;
+import refactor_plugin.util.UtilClone;
 
 /**
  * "Dropzone" sidebar view.
@@ -171,8 +174,142 @@ public class DropzoneView extends ViewPart {
          MessageDialog.openWarning(getSite().getShell(), "Dropzone", "No text selected. Highlight some code in the editor, then click Add.");
          return;
       }
+      int startLine = ts.getStartLine() + 1; // 1-based
+      int endLine = ts.getEndLine() + 1; // 1-based
+      String currentFilePath = getEditorFilePath(editor);
+
+      System.out.println("[DBG] [dropzone] selected snippet lines: startLine=" + startLine + ", endLine=" + endLine);
+      System.out.println("[DBG] [dropzone] current file path=" + currentFilePath);
+
+      CloneRecord matched = findCloneRecordForSelection(currentFilePath, startLine, endLine);
+      printSiblingCloneInstances(matched, currentFilePath, startLine, endLine);
 
       addSnippet(ts.getText());
+   }
+
+   private String getEditorFilePath(ITextEditor editor) {
+      if (editor == null || editor.getEditorInput() == null) {
+         return null;
+      }
+
+      var input = editor.getEditorInput();
+
+      if (input instanceof org.eclipse.ui.IFileEditorInput fei) {
+         var loc = fei.getFile().getLocation();
+         return loc != null ? loc.toOSString() : null;
+      }
+
+      return input.getToolTipText();
+   }
+
+   private CloneRecord findCloneRecordForSelection(String currentFilePath, int startLine, int endLine) {
+      if (currentFilePath == null || currentFilePath.isBlank()) {
+         return null;
+      }
+
+      CloneContext ctx = CloneContext.get();
+      String normalizedCurrent = normalizePath(currentFilePath);
+
+      for (CloneRecord record : ctx.recordMap.values()) {
+         if (record == null || record.sources == null) {
+            continue;
+         }
+
+         for (CloneRecord.CloneSource src : record.sources) {
+            if (src == null || src.file == null) {
+               continue;
+            }
+
+            String resolved = ctx.resolvePath(src.file);
+            String normalizedSource = normalizePath(resolved != null ? resolved : src.file);
+
+            if (!normalizedCurrent.equals(normalizedSource)) {
+               continue;
+            }
+
+            int[] cloneRange = parseRange(src.range);
+            if (cloneRange == null) {
+               continue;
+            }
+
+            if (rangeOverlaps(startLine, endLine, cloneRange[0], cloneRange[1])) {
+               return record;
+            }
+         }
+      }
+
+      return null;
+   }
+
+   private void printSiblingCloneInstances(CloneRecord record, String currentFilePath, int startLine, int endLine) {
+      if (record == null) {
+         System.out.println("[DBG] [dropzone] no matching clone record found for file=" + currentFilePath + " lines=" + startLine + "-" + endLine);
+         return;
+      }
+
+      System.out.println("[DBG] [dropzone] matched clone classid=" + record.classid + " for file=" + currentFilePath + " lines=" + startLine + "-" + endLine);
+
+      CloneContext ctx = CloneContext.get();
+      String normalizedCurrent = normalizePath(currentFilePath);
+
+      int siblingCount = 0;
+
+      if (record.sources != null) {
+         for (CloneRecord.CloneSource src : record.sources) {
+            if (src == null || src.file == null) {
+               continue;
+            }
+
+            String resolved = ctx.resolvePath(src.file);
+            String normalizedSource = normalizePath(resolved != null ? resolved : src.file);
+
+            int[] cloneRange = parseRange(src.range);
+            if (cloneRange == null) {
+               continue;
+            }
+
+            boolean isCurrentSelection = normalizedCurrent.equals(normalizedSource) && rangeOverlaps(startLine, endLine, cloneRange[0], cloneRange[1]);
+
+            if (isCurrentSelection) {
+               continue;
+            }
+
+            siblingCount++;
+            String relativePath = UtilClone.toProjectRelativeJavaPath(src);
+            System.out.println("[DBG] [dropzone] sibling clone #" + siblingCount + ": file=" + (relativePath != null ? relativePath : src.file) + ", startLine=" + cloneRange[0] + ", endLine=" + cloneRange[1]);
+         }
+      }
+
+      if (siblingCount == 0) {
+         System.out.println("[DBG] [dropzone] no sibling clone instances found.");
+      }
+   }
+
+   private int[] parseRange(String range) {
+      if (range == null || range.isBlank()) {
+         return null;
+      }
+
+      String[] parts = range.trim().split("-");
+      if (parts.length != 2) {
+         return null;
+      }
+
+      try {
+         int start = Integer.parseInt(parts[0].trim());
+         int end = Integer.parseInt(parts[1].trim());
+         return new int[] { start, end };
+      } catch (NumberFormatException e) {
+         return null;
+      }
+   }
+
+   private boolean rangeOverlaps(int selStart, int selEnd, int cloneStart, int cloneEnd) {
+      return selStart <= cloneEnd && cloneStart <= selEnd;
+   }
+
+   private String normalizePath(String path) {
+      return path == null ? null : path.replace('\\', '/');
    }
 
    // ── Public API ────────────────────────────────────────────────────────────
