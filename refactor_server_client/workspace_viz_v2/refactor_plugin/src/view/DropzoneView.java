@@ -25,6 +25,7 @@ import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import refactor_plugin.dnd.DropzoneTransfer;
+import refactor_plugin.handlers.extract.ExtractionTarget;
 import refactor_plugin.model.CloneContext;
 import refactor_plugin.model.CloneRecord;
 import refactor_plugin.util.UtilClone;
@@ -276,6 +277,11 @@ public class DropzoneView extends ViewPart {
 
             siblingCount++;
             String relativePath = UtilClone.toProjectRelativeJavaPath(src);
+            List<ExtractionTarget> extractionTargets = UtilClone.buildExtractionTargets(record);
+            for (ExtractionTarget t : extractionTargets) {
+               System.out.println("[DBG] target: " + ", startLine=" + t.getStartLine() + //
+                     ", endLine=" + t.getEndLine() + ", methodName=" + t.getMethodName() + ", primary=" + t.isPrimary());
+            }
             System.out.println("[DBG] [dropzone] sibling clone #" + siblingCount + ": file=" + (relativePath != null ? relativePath : src.file) + ", startLine=" + cloneRange[0] + ", endLine=" + cloneRange[1]);
          }
       }
