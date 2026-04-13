@@ -49,9 +49,18 @@ public class DropzoneView extends ViewPart {
    public static class DropItem {
       public final String content;
       public final String label;
+      public final CloneDragPayload payload;
+
+      public DropItem(String content, CloneDragPayload payload) {
+         this.content = content;
+         this.payload = payload;
+         String t = content.trim().replace('\n', ' ');
+         this.label = t.length() > 50 ? t.substring(0, 50) + "\u2026" : t;
+      }
 
       public DropItem(String content) {
          this.content = content;
+         this.payload = null;
          String t = content.trim().replace('\n', ' ');
          this.label = t.length() > 50 ? t.substring(0, 50) + "\u2026" : t;
       }
@@ -67,6 +76,8 @@ public class DropzoneView extends ViewPart {
    private ListViewer listViewer;
    private final List<DropItem> items = new ArrayList<>();
    private String dragging = null; // content being dragged
+
+   private DropItem draggingItem = null;
 
    // ── View lifecycle ────────────────────────────────────────────────────────
 
@@ -112,6 +123,44 @@ public class DropzoneView extends ViewPart {
          @Override
          public void dragFinished(DragSourceEvent event) {
             dragging = null;
+         }
+      });
+   }
+
+   private void setupDragSource_future() {
+      DragSource dragSource = new DragSource(listViewer.getControl(), DND.DROP_COPY | DND.DROP_MOVE);
+
+      dragSource.setTransfer(new Transfer[] { DropzoneTransfer.getInstance(), TextTransfer.getInstance() });
+
+      dragSource.addDragListener(new DragSourceAdapter() {
+         @Override
+         public void dragStart(DragSourceEvent event) {
+            IStructuredSelection sel = listViewer.getStructuredSelection();
+            if (sel.isEmpty()) {
+               event.doit = false;
+               return;
+            }
+            draggingItem = (DropItem) sel.getFirstElement();
+         }
+
+         @Override
+         public void dragSetData(DragSourceEvent event) {
+            if (draggingItem == null) {
+               event.doit = false;
+               return;
+            }
+
+            if (DropzoneTransfer.getInstance().isSupportedType(event.dataType)) {
+               event.data = draggingItem.payload;
+            }
+            else if (TextTransfer.getInstance().isSupportedType(event.dataType)) {
+               event.data = draggingItem.content;
+            }
+         }
+
+         @Override
+         public void dragFinished(DragSourceEvent event) {
+            draggingItem = null;
          }
       });
    }
@@ -184,8 +233,21 @@ public class DropzoneView extends ViewPart {
       System.out.println("[DBG] [dropzone] current file path=" + currentFilePath);
 
       CloneRecord matched = findCloneRecordForSelection(currentFilePath, startLine, endLine);
-      printSiblingCloneInstances(matched, currentFilePath, startLine, endLine);
+      CloneRecord.CloneSource selectedSource = findSelectedSource(matched, currentFilePath, startLine, endLine);
+      CloneDragPayload payload = buildDragPayload(matched, selectedSource);
+      if (payload != null) {
+         System.out.println("[DBG] [dropzone] payload prepared:" + " relativePath=" + payload.getRelativePath() + //
+               ", extractedMethodLocation=" + payload.getExtractedMethodLocation() + ", targets=" + payload.getExtractionTargets().size());
 
+         for (ExtractionTarget t : payload.getExtractionTargets()) {
+            System.out.println("[DBG] target: " + ", startLine=" + t.getStartLine() + //
+                  ", endLine=" + t.getEndLine() + ", methodName=" + t.getMethodName() + ", primary=" + t.isPrimary());
+         }
+      }
+      else {
+         System.out.println("[DBG] [dropzone] payload not prepared; snippet will be treated as generic text.");
+      }
+      // printSiblingCloneInstances(matched, currentFilePath, startLine, endLine);
       addSnippet(ts.getText());
    }
 
@@ -255,6 +317,40 @@ public class DropzoneView extends ViewPart {
       return null;
    }
 
+   private CloneRecord.CloneSource findSelectedSource(CloneRecord record, String currentFilePath, int startLine, int endLine) {
+      if (record == null || record.sources == null || currentFilePath == null) {
+         return null;
+      }
+
+      CloneContext ctx = CloneContext.get();
+      String normalizedCurrent = normalizePath(currentFilePath);
+
+      for (CloneRecord.CloneSource src : record.sources) {
+         if (src == null || src.file == null) {
+            continue;
+         }
+
+         String resolved = ctx.resolvePath(src.file);
+         String normalizedSource = normalizePath(resolved != null ? resolved : src.file);
+
+         if (!normalizedCurrent.equals(normalizedSource)) {
+            continue;
+         }
+
+         int[] cloneRange = parseRange(src.range);
+         if (cloneRange == null) {
+            continue;
+         }
+
+         if (rangeOverlaps(startLine, endLine, cloneRange[0], cloneRange[1])) {
+            return src;
+         }
+      }
+
+      return null;
+   }
+
+   @SuppressWarnings("unused")
    private void printSiblingCloneInstances(CloneRecord record, String currentFilePath, int startLine, int endLine) {
       if (record == null) {
          System.out.println("[DBG] [dropzone] no matching clone record found for file=" + currentFilePath + " lines=" + startLine + "-" + endLine);
