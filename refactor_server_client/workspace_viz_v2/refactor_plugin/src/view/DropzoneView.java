@@ -29,6 +29,7 @@ import refactor_plugin.handlers.extract.ExtractionTarget;
 import refactor_plugin.model.CloneContext;
 import refactor_plugin.model.CloneRecord;
 import refactor_plugin.util.UtilClone;
+import view.clone.CloneDragPayload;
 
 /**
  * "Dropzone" sidebar view.
@@ -186,6 +187,18 @@ public class DropzoneView extends ViewPart {
       printSiblingCloneInstances(matched, currentFilePath, startLine, endLine);
 
       addSnippet(ts.getText());
+   }
+
+   private CloneDragPayload buildDragPayload(CloneRecord record, CloneRecord.CloneSource selectedSource) {
+      if (record == null || selectedSource == null) {
+         return null;
+      }
+
+      String relativePath = UtilClone.toProjectRelativeJavaPath(selectedSource);
+      List<ExtractionTarget> extractionTargets = UtilClone.buildExtractionTargets(record);
+      String extractedMethodLocation = UtilClone.inferExtractedMethodLocation(selectedSource);
+
+      return new CloneDragPayload(record, selectedSource, relativePath, extractionTargets, extractedMethodLocation);
    }
 
    private String getEditorFilePath(ITextEditor editor) {

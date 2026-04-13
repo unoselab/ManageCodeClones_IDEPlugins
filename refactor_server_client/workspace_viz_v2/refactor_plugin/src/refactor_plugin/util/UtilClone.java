@@ -102,4 +102,17 @@ public class UtilClone {
          return null;
       }
    }
+
+   public static String inferExtractedMethodLocation(CloneSource src) {
+      String qn = (src != null && src.enclosing_function != null) ? src.enclosing_function.qualified_name : null;
+
+      if (qn == null || qn.isBlank()) {
+         return "";
+      }
+
+      int lastDot = qn.lastIndexOf('.');
+      String methodName = lastDot >= 0 ? qn.substring(lastDot + 1) : qn;
+      return "After " + methodName + "()";
+   }
+
 }
