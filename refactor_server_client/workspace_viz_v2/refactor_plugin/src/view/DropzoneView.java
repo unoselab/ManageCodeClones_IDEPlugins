@@ -29,163 +29,164 @@ import refactor_plugin.dnd.DropzoneTransfer;
 /**
  * "Dropzone" sidebar view.
  *
- * Users collect code snippets here (via the "Add from Editor Selection" toolbar
- * button or by dragging text onto the list), then drag a snippet from this view
- * onto any open editor to trigger either:
+ * Users collect code snippets here (via the "Add from Editor Selection" toolbar button or by dragging text onto the list), then drag a snippet from this view onto any open editor to trigger either:
  *
- *   • Clone-aware path  — if the target file was opened from the CloneTreeView,
- *                         EditorDropStartup applies the pre-computed Extract Method.
- *   • Generic-wrap path — otherwise, prompts for a method name and inserts the
- *                         snippet wrapped in a method definition.
+ * • Clone-aware path — if the target file was opened from the CloneTreeView, EditorDropStartup applies the pre-computed Extract Method. • Generic-wrap path — otherwise, prompts for a method name and inserts the snippet wrapped in a method definition.
  *
  * Mirrors the DropzoneProvider class in the VS Code extension's extension.ts.
  */
 public class DropzoneView extends ViewPart {
 
-    public static final String ID = "view.DropzoneView";
+   public static final String ID = "view.DropzoneView";
 
-    // ── Internal list item ────────────────────────────────────────────────────
+   // ── Internal list item ────────────────────────────────────────────────────
 
-    public static class DropItem {
-        public final String content;
-        public final String label;
+   public static class DropItem {
+      public final String content;
+      public final String label;
 
-        public DropItem(String content) {
-            this.content = content;
-            String t = content.trim().replace('\n', ' ');
-            this.label = t.length() > 50 ? t.substring(0, 50) + "\u2026" : t;
-        }
+      public DropItem(String content) {
+         this.content = content;
+         String t = content.trim().replace('\n', ' ');
+         this.label = t.length() > 50 ? t.substring(0, 50) + "\u2026" : t;
+      }
 
-        @Override public String toString() { return label; }
-    }
+      @Override
+      public String toString() {
+         return label;
+      }
+   }
 
-    // ── State ─────────────────────────────────────────────────────────────────
+   // ── State ─────────────────────────────────────────────────────────────────
 
-    private ListViewer             listViewer;
-    private final List<DropItem>   items     = new ArrayList<>();
-    private String                 dragging  = null;  // content being dragged
+   private ListViewer listViewer;
+   private final List<DropItem> items = new ArrayList<>();
+   private String dragging = null; // content being dragged
 
-    // ── View lifecycle ────────────────────────────────────────────────────────
+   // ── View lifecycle ────────────────────────────────────────────────────────
 
-    @Override
-    public void createPartControl(Composite parent) {
-        listViewer = new ListViewer(parent, SWT.BORDER | SWT.V_SCROLL | SWT.MULTI);
-        listViewer.setContentProvider(ArrayContentProvider.getInstance());
-        listViewer.setLabelProvider(new LabelProvider());
-        listViewer.setInput(items);
+   @Override
+   public void createPartControl(Composite parent) {
+      listViewer = new ListViewer(parent, SWT.BORDER | SWT.V_SCROLL | SWT.MULTI);
+      listViewer.setContentProvider(ArrayContentProvider.getInstance());
+      listViewer.setLabelProvider(new LabelProvider());
+      listViewer.setInput(items);
 
-        setupDragSource();
-        contributeToolbar();
-    }
+      setupDragSource();
+      contributeToolbar();
+   }
 
-    // ── Drag source (Dropzone → editor) ──────────────────────────────────────
+   // ── Drag source (Dropzone → editor) ──────────────────────────────────────
 
-    private void setupDragSource() {
-        DragSource dragSource = new DragSource(
-                listViewer.getControl(),
-                DND.DROP_COPY | DND.DROP_MOVE);
+   private void setupDragSource() {
+      DragSource dragSource = new DragSource(listViewer.getControl(), DND.DROP_COPY | DND.DROP_MOVE);
 
-        dragSource.setTransfer(
-                new Transfer[]{ DropzoneTransfer.getInstance(), TextTransfer.getInstance() });
+      dragSource.setTransfer(new Transfer[] { DropzoneTransfer.getInstance(), TextTransfer.getInstance() });
 
-        dragSource.addDragListener(new DragSourceAdapter() {
-            @Override
-            public void dragStart(DragSourceEvent event) {
-                IStructuredSelection sel = listViewer.getStructuredSelection();
-                if (sel.isEmpty()) { event.doit = false; return; }
-                dragging = ((DropItem) sel.getFirstElement()).content;
+      dragSource.addDragListener(new DragSourceAdapter() {
+         @Override
+         public void dragStart(DragSourceEvent event) {
+            IStructuredSelection sel = listViewer.getStructuredSelection();
+            if (sel.isEmpty()) {
+               event.doit = false;
+               return;
             }
+            dragging = ((DropItem) sel.getFirstElement()).content;
+         }
 
-            @Override
-            public void dragSetData(DragSourceEvent event) {
-                if (DropzoneTransfer.getInstance().isSupportedType(event.dataType)) {
-                    event.data = dragging;
-                } else if (TextTransfer.getInstance().isSupportedType(event.dataType)) {
-                    event.data = dragging;
-                }
+         @Override
+         public void dragSetData(DragSourceEvent event) {
+            if (DropzoneTransfer.getInstance().isSupportedType(event.dataType)) {
+               event.data = dragging;
             }
-
-            @Override
-            public void dragFinished(DragSourceEvent event) {
-                dragging = null;
+            else if (TextTransfer.getInstance().isSupportedType(event.dataType)) {
+               event.data = dragging;
             }
-        });
-    }
+         }
 
-    // ── Toolbar ───────────────────────────────────────────────────────────────
+         @Override
+         public void dragFinished(DragSourceEvent event) {
+            dragging = null;
+         }
+      });
+   }
 
-    private void contributeToolbar() {
-        IToolBarManager tbm = getViewSite().getActionBars().getToolBarManager();
+   // ── Toolbar ───────────────────────────────────────────────────────────────
 
-        Action addAction = new Action("Add from Editor Selection") {
-            @Override public void run() { addFromEditorSelection(); }
-        };
-        addAction.setToolTipText(
-                "Add the currently selected text from the active editor to the Dropzone");
+   private void contributeToolbar() {
+      IToolBarManager tbm = getViewSite().getActionBars().getToolBarManager();
 
-        Action removeAction = new Action("Remove Selected") {
-            @Override public void run() {
-                IStructuredSelection sel = listViewer.getStructuredSelection();
-                sel.forEach(o -> items.remove(o));
-                listViewer.refresh();
-            }
-        };
-        removeAction.setToolTipText("Remove the selected snippet(s) from the Dropzone");
+      Action addAction = new Action("Add from Editor Selection") {
+         @Override
+         public void run() {
+            addFromEditorSelection();
+         }
+      };
+      addAction.setToolTipText("Add the currently selected text from the active editor to the Dropzone");
 
-        Action clearAction = new Action("Clear All") {
-            @Override public void run() {
-                if (!items.isEmpty()
-                        && MessageDialog.openConfirm(getSite().getShell(),
-                                "Clear Dropzone", "Remove all snippets?")) {
-                    items.clear();
-                    listViewer.refresh();
-                }
-            }
-        };
-        clearAction.setToolTipText("Clear all snippets from the Dropzone");
-
-        tbm.add(addAction);
-        tbm.add(removeAction);
-        tbm.add(clearAction);
-    }
-
-    // ── Add from editor selection ─────────────────────────────────────────────
-
-    private void addFromEditorSelection() {
-        IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
-        if (window == null) { return; }
-
-        // Use getActiveEditor() — it remembers the last active editor even after
-        // the Dropzone toolbar button steals focus from the editor.
-        var activeEditor = window.getActivePage().getActiveEditor();
-        if (!(activeEditor instanceof ITextEditor editor)) {
-            MessageDialog.openWarning(getSite().getShell(), "Dropzone",
-                    "No editor is active. Click inside an editor and select some code first.");
-            return;
-        }
-
-        var sel = editor.getSelectionProvider().getSelection();
-        if (!(sel instanceof ITextSelection ts) || ts.getText() == null || ts.getText().isBlank()) {
-            MessageDialog.openWarning(getSite().getShell(), "Dropzone",
-                    "No text selected. Highlight some code in the editor, then click Add.");
-            return;
-        }
-
-        addSnippet(ts.getText());
-    }
-
-    // ── Public API ────────────────────────────────────────────────────────────
-
-    /** Adds a snippet to the list. Safe to call from any thread. */
-    public void addSnippet(String content) {
-        getSite().getShell().getDisplay().asyncExec(() -> {
-            items.add(new DropItem(content));
+      Action removeAction = new Action("Remove Selected") {
+         @Override
+         public void run() {
+            IStructuredSelection sel = listViewer.getStructuredSelection();
+            sel.forEach(o -> items.remove(o));
             listViewer.refresh();
-        });
-    }
+         }
+      };
+      removeAction.setToolTipText("Remove the selected snippet(s) from the Dropzone");
 
-    @Override
-    public void setFocus() {
-        listViewer.getControl().setFocus();
-    }
+      Action clearAction = new Action("Clear All") {
+         @Override
+         public void run() {
+            if (!items.isEmpty() && MessageDialog.openConfirm(getSite().getShell(), "Clear Dropzone", "Remove all snippets?")) {
+               items.clear();
+               listViewer.refresh();
+            }
+         }
+      };
+      clearAction.setToolTipText("Clear all snippets from the Dropzone");
+
+      tbm.add(addAction);
+      tbm.add(removeAction);
+      tbm.add(clearAction);
+   }
+
+   // ── Add from editor selection ─────────────────────────────────────────────
+
+   private void addFromEditorSelection() {
+      IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+      if (window == null) {
+         return;
+      }
+
+      // Use getActiveEditor() — it remembers the last active editor even after
+      // the Dropzone toolbar button steals focus from the editor.
+      var activeEditor = window.getActivePage().getActiveEditor();
+      if (!(activeEditor instanceof ITextEditor editor)) {
+         MessageDialog.openWarning(getSite().getShell(), "Dropzone", "No editor is active. Click inside an editor and select some code first.");
+         return;
+      }
+
+      var sel = editor.getSelectionProvider().getSelection();
+      if (!(sel instanceof ITextSelection ts) || ts.getText() == null || ts.getText().isBlank()) {
+         MessageDialog.openWarning(getSite().getShell(), "Dropzone", "No text selected. Highlight some code in the editor, then click Add.");
+         return;
+      }
+
+      addSnippet(ts.getText());
+   }
+
+   // ── Public API ────────────────────────────────────────────────────────────
+
+   /** Adds a snippet to the list. Safe to call from any thread. */
+   public void addSnippet(String content) {
+      getSite().getShell().getDisplay().asyncExec(() -> {
+         items.add(new DropItem(content));
+         listViewer.refresh();
+      });
+   }
+
+   @Override
+   public void setFocus() {
+      listViewer.getControl().setFocus();
+   }
 }
