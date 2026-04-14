@@ -37,11 +37,13 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import view.CloneGraphView;
-
+import view.clone.CloneDragPayload;
 import refactor_plugin.dnd.DropzoneTransfer;
+import refactor_plugin.handlers.extract.ExtractionTarget;
 import refactor_plugin.model.CloneContext;
 import refactor_plugin.model.CloneRecord;
 import refactor_plugin.util.CloneRefactoring;
+import refactor_plugin.util.UtilClone;
 import refactor_plugin.util.WrapHelper;
 
 /**
@@ -205,13 +207,24 @@ public class EditorDropStartup implements IStartup {
             @Override
             public void drop(DropTargetEvent event) {
                Shell shell = widget.getShell();
+               int dropLine = getDropLine(editor, widget, event);
+               System.out.println("[DBG] [dropzone] dropLine=" + dropLine);
 
                // ── Path 1: Dropzone drag → clone-aware or generic wrap ──
                if (DropzoneTransfer.getInstance().isSupportedType(event.currentDataType)) {
-                  String snippet = (String) event.data;
+
+                  Object data = event.data;
+
+                  if (data instanceof CloneDragPayload payload) {
+                     String snippet = null; // optional fallback if you also carried text separately
+                     handleDropzoneSnippet(editor, snippet, payload, shell, dropLine);
+                  }
+                  /*
+                   * String snippet = (String) event.data;
                   if (snippet != null && !snippet.isBlank()) {
                      handleDropzoneSnippet(editor, snippet, shell);
-                  }
+                  }*/
+
                   return;
                }
 
@@ -228,22 +241,79 @@ public class EditorDropStartup implements IStartup {
    }
 
    // ── Handle a drop from the Dropzone sidebar ───────────────────────────────
+   private void handleDropzoneSnippet(ITextEditor editor, String snippet, CloneDragPayload payload, Shell shell, int dropLine) {
+      if (payload != null) {
+         System.out.println("[DBG] [dropzone] payload received at drop:");
+         System.out.println("    dropLine=" + dropLine);
+
+         CloneRecord payloadRecord = payload.getRecord();
+         CloneRecord.CloneSource selectedSource = payload.getSelectedSource();
+
+         System.out.println("    classid=" + (payloadRecord != null ? payloadRecord.classid : "null"));
+         System.out.println("    selectedSource.file=" + (selectedSource != null ? selectedSource.file : "null"));
+         System.out.println("    selectedSource.relativePath=" + (selectedSource != null ? UtilClone.toProjectRelativeJavaPath(selectedSource) : "null"));
+         System.out.println("    selectedSource.range=" + (selectedSource != null ? selectedSource.range : "null"));
+         System.out.println("    relativePath=" + payload.getRelativePath());
+         System.out.println("    extractedMethodLocation=" + payload.getExtractedMethodLocation());
+
+         List<ExtractionTarget> extractionTargets = payload.getExtractionTargets();
+         System.out.println("    extractionTargets.size=" + (extractionTargets != null ? extractionTargets.size() : 0));
+
+         if (extractionTargets != null) {
+            for (int i = 0; i < extractionTargets.size(); i++) {
+               ExtractionTarget t = extractionTargets.get(i);
+               System.out.println("    target[" + i + "]" + ": startLine=" + t.getStartLine() + ", endLine=" + t.getEndLine() + ", methodName=" + t.getMethodName() + ", primary=" + t.isPrimary());
+            }
+         }
+      }
+      else {
+         System.out.println("[DBG] [dropzone] no payload received; snippet-only drop.");
+         System.out.println("[DBG] [dropzone] dropLine=" + dropLine);
+      }
+   }
+
+   private int getDropLine(ITextEditor editor, StyledText widget, DropTargetEvent event) {
+      if (editor == null || widget == null || event == null || widget.isDisposed()) {
+         return -1;
+      }
+
+      try {
+         org.eclipse.swt.graphics.Point controlPoint = widget.toControl(new org.eclipse.swt.graphics.Point(event.x, event.y));
+
+         int offset = widget.getOffsetAtPoint(controlPoint);
+         if (offset < 0) {
+            offset = widget.getCaretOffset();
+         }
+
+         IDocument doc = editor.getDocumentProvider().getDocument(editor.getEditorInput());
+         if (doc == null) {
+            return -1;
+         }
+
+         return doc.getLineOfOffset(offset) + 1; // 1-based
+      } catch (Exception e) {
+         e.printStackTrace();
+         return -1;
+      }
+   }
 
    private void handleDropzoneSnippet(ITextEditor editor, String snippet, Shell shell) {
       String filePath = getEditorFilePath(editor);
       CloneRecord record = filePath != null ? findRecordForFile(filePath) : null;
-      System.out.println("[refactor_plugin] drop: filePath=" + filePath + "  recordMap.size=" + CloneContext.get().recordMap.size() + "  matched=" + (record != null ? record.classid : "null"));
+      System.out.println("[refactor_plugin] drop: filePath=" + filePath + "  recordMap.size=" + //
+            CloneContext.get().recordMap.size() + "\n  matched=" + (record != null ? record.classid : "null"));
 
+      /*      
       if (record != null) {
          // ── Clone-aware path ──────────────────────────────────────────
          boolean confirm = MessageDialog.openConfirm(shell, "Apply Extract Method", "Apply \"Extract Method\" for clone group \"" + record.classid + "\"?\n\n" + record.sources.size() + " clone site(s) will be updated together.\n" + "Use Ctrl+Z to undo.");
          if (!confirm) {
             return;
          }
-
+      
          CloneRefactoring.apply(shell, record);
          MessageDialog.openInformation(shell, "Extract Method Applied", "Extract method applied for " + record.classid + " \u2014 " + record.sources.size() + " clone site(s) updated.");
-
+      
       }
       else {
          // ── Generic wrap path ─────────────────────────────────────────
@@ -251,19 +321,19 @@ public class EditorDropStartup implements IStartup {
          if (dlg.open() != Window.OK) {
             return;
          }
-
+      
          String methodName = dlg.getValue().trim();
          if (methodName.isEmpty()) {
             methodName = "extractedMethod";
          }
-
+      
          String lang = detectLanguage(editor);
          String indent = getCaretIndent(editor);
          String wrapped = WrapHelper.wrapInMethod(snippet, methodName, lang, indent);
-
+      
          insertAtCaret(editor, wrapped);
          MessageDialog.openInformation(shell, "Snippet Wrapped", "Snippet wrapped in " + methodName + "() and inserted.");
-      }
+      }*/
    }
 
    // ── Intra-editor drag detection (mirrors VS Code dragListener) ────────────

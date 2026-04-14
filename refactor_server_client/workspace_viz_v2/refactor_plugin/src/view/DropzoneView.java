@@ -94,7 +94,7 @@ public class DropzoneView extends ViewPart {
 
    // ── Drag source (Dropzone → editor) ──────────────────────────────────────
 
-   private void setupDragSource() {
+   private void setupDragSource_old() {
       DragSource dragSource = new DragSource(listViewer.getControl(), DND.DROP_COPY | DND.DROP_MOVE);
 
       dragSource.setTransfer(new Transfer[] { DropzoneTransfer.getInstance(), TextTransfer.getInstance() });
@@ -127,7 +127,7 @@ public class DropzoneView extends ViewPart {
       });
    }
 
-   private void setupDragSource_future() {
+   private void setupDragSource() {
       DragSource dragSource = new DragSource(listViewer.getControl(), DND.DROP_COPY | DND.DROP_MOVE);
 
       dragSource.setTransfer(new Transfer[] { DropzoneTransfer.getInstance(), TextTransfer.getInstance() });
@@ -150,10 +150,16 @@ public class DropzoneView extends ViewPart {
                return;
             }
 
+            System.out.println("[DBG] dragSetData dataType=" + event.dataType.type);
+
             if (DropzoneTransfer.getInstance().isSupportedType(event.dataType)) {
+               System.out.println("[DBG] dragSetData custom transfer payload=" + (draggingItem.payload == null ? "null" : draggingItem.payload.getClass().getName()));
                event.data = draggingItem.payload;
+               return;
             }
-            else if (TextTransfer.getInstance().isSupportedType(event.dataType)) {
+
+            if (TextTransfer.getInstance().isSupportedType(event.dataType)) {
+               System.out.println("[DBG] dragSetData text transfer string=" + (draggingItem.content == null ? "null" : "len=" + draggingItem.content.length()));
                event.data = draggingItem.content;
             }
          }
@@ -247,8 +253,9 @@ public class DropzoneView extends ViewPart {
       else {
          System.out.println("[DBG] [dropzone] payload not prepared; snippet will be treated as generic text.");
       }
+      addSnippet(ts.getText(), payload);
       // printSiblingCloneInstances(matched, currentFilePath, startLine, endLine);
-      addSnippet(ts.getText());
+      // addSnippet(ts.getText());
    }
 
    private CloneDragPayload buildDragPayload(CloneRecord record, CloneRecord.CloneSource selectedSource) {
@@ -428,6 +435,12 @@ public class DropzoneView extends ViewPart {
    }
 
    // ── Public API ────────────────────────────────────────────────────────────
+   public void addSnippet(String content, CloneDragPayload payload) {
+      getSite().getShell().getDisplay().asyncExec(() -> {
+         items.add(new DropItem(content, payload));
+         listViewer.refresh();
+      });
+   }
 
    /** Adds a snippet to the list. Safe to call from any thread. */
    public void addSnippet(String content) {
