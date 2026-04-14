@@ -45,6 +45,17 @@ import refactor_plugin.model.CloneRecord;
 import refactor_plugin.util.CloneRefactoring;
 import refactor_plugin.util.UtilClone;
 import refactor_plugin.util.WrapHelper;
+import java.util.ArrayList;
+import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.JavaModelException;
+import org.eclipse.jdt.core.dom.AST;
+import org.eclipse.jdt.core.dom.ASTNode;
+import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.MethodDeclaration;
+import refactor_plugin.util.ExtractMethodService;
 
 /**
  * Early-startup hook that attaches DnD and drag-detection listeners to every text/Java editor opened in the workbench.
@@ -58,6 +69,96 @@ import refactor_plugin.util.WrapHelper;
  * 3. Intra-editor drag detection (mirrors VS Code dragListener): Watches IDocument for a delete+insert pair that indicates the user dragged a block of code within the same file. If the file is part of a clone group, the drag is reverted and the pre-computed Extract Method is applied instead.
  */
 public class EditorDropStartup implements IStartup {
+
+   private static class MethodLineInfo {
+      final String methodName;
+      final int startLine;
+      final int endLine;
+
+      MethodLineInfo(String methodName, int startLine, int endLine) {
+         this.methodName = methodName;
+         this.startLine = startLine;
+         this.endLine = endLine;
+      }
+   }
+
+   private static class DropPlacementResult {
+      final boolean valid;
+      final String message;
+      final String extractedMethodLocation;
+
+      DropPlacementResult(boolean valid, String message, String extractedMethodLocation) {
+         this.valid = valid;
+         this.message = message;
+         this.extractedMethodLocation = extractedMethodLocation;
+      }
+   }
+
+   private List<MethodLineInfo> collectMethodLineInfo(ICompilationUnit cu) {
+      List<MethodLineInfo> methods = new ArrayList<>();
+      if (cu == null) {
+         return methods;
+      }
+
+      ASTParser parser = ASTParser.newParser(AST.JLS17);
+      parser.setSource(cu);
+      parser.setKind(ASTParser.K_COMPILATION_UNIT);
+      parser.setResolveBindings(false);
+
+      CompilationUnit astRoot = (CompilationUnit) parser.createAST(null);
+
+      astRoot.accept(new ASTVisitor() {
+         @Override
+         public boolean visit(MethodDeclaration node) {
+            int startPos = node.getStartPosition();
+            int endPos = startPos + node.getLength() - 1;
+
+            int startLine = astRoot.getLineNumber(startPos);
+            int endLine = astRoot.getLineNumber(endPos);
+
+            String methodName = node.getName() != null ? node.getName().getIdentifier() : "<unknown>";
+            methods.add(new MethodLineInfo(methodName, startLine, endLine));
+            return super.visit(node);
+         }
+      });
+
+      return methods;
+   }
+
+   private DropPlacementResult resolveDropPlacement(ICompilationUnit cu, int dropLine) {
+      if (cu == null) {
+         return new DropPlacementResult(false, "Could not resolve the target Java file.", null);
+      }
+      if (dropLine <= 0) {
+         return new DropPlacementResult(false, "Invalid drop location.", null);
+      }
+
+      List<MethodLineInfo> methods = collectMethodLineInfo(cu);
+      if (methods.isEmpty()) {
+         return new DropPlacementResult(false, "No methods were found in the target file.", null);
+      }
+
+      for (MethodLineInfo m : methods) {
+         if (dropLine >= m.startLine && dropLine <= m.endLine) {
+            return new DropPlacementResult(false, "Unable to do extract method refactoring: the drop point is inside method " + m.methodName + "().", null);
+         }
+      }
+
+      MethodLineInfo anchor = null;
+      for (MethodLineInfo m : methods) {
+         if (m.endLine < dropLine) {
+            if (anchor == null || m.endLine > anchor.endLine) {
+               anchor = m;
+            }
+         }
+      }
+
+      if (anchor == null) {
+         return new DropPlacementResult(false, "Unable to do extract method refactoring: no method exists above the drop point.", null);
+      }
+
+      return new DropPlacementResult(true, null, "After " + anchor.methodName + "()");
+   }
 
    @Override
    public void earlyStartup() {
@@ -217,7 +318,11 @@ public class EditorDropStartup implements IStartup {
 
                   if (data instanceof CloneDragPayload payload) {
                      String snippet = null; // optional fallback if you also carried text separately
-                     handleDropzoneSnippet(editor, snippet, payload, shell, dropLine);
+                     try {
+                        handleDropzoneSnippet(editor, snippet, payload, shell, dropLine);
+                     } catch (Exception e) {
+                        e.printStackTrace();
+                     }
                   }
                   /*
                    * String snippet = (String) event.data;
@@ -241,7 +346,7 @@ public class EditorDropStartup implements IStartup {
    }
 
    // ── Handle a drop from the Dropzone sidebar ───────────────────────────────
-   private void handleDropzoneSnippet(ITextEditor editor, String snippet, CloneDragPayload payload, Shell shell, int dropLine) {
+   private void handleDropzoneSnippet(ITextEditor editor, String snippet, CloneDragPayload payload, Shell shell, int dropLine) throws Exception {
       if (payload != null) {
          System.out.println("[DBG] [dropzone] payload received at drop:");
          System.out.println("    dropLine=" + dropLine);
@@ -254,7 +359,7 @@ public class EditorDropStartup implements IStartup {
          System.out.println("    selectedSource.relativePath=" + (selectedSource != null ? UtilClone.toProjectRelativeJavaPath(selectedSource) : "null"));
          System.out.println("    selectedSource.range=" + (selectedSource != null ? selectedSource.range : "null"));
          System.out.println("    relativePath=" + payload.getRelativePath());
-         System.out.println("    extractedMethodLocation=" + payload.getExtractedMethodLocation());
+         System.out.println("    [old] extractedMethodLocation=" + payload.getExtractedMethodLocation());
 
          List<ExtractionTarget> extractionTargets = payload.getExtractionTargets();
          System.out.println("    extractionTargets.size=" + (extractionTargets != null ? extractionTargets.size() : 0));
@@ -265,6 +370,27 @@ public class EditorDropStartup implements IStartup {
                System.out.println("    target[" + i + "]" + ": startLine=" + t.getStartLine() + ", endLine=" + t.getEndLine() + ", methodName=" + t.getMethodName() + ", primary=" + t.isPrimary());
             }
          }
+
+         IWorkspace workspace = org.eclipse.core.resources.ResourcesPlugin.getWorkspace();
+         ExtractMethodService refactorService = new ExtractMethodService();
+         ICompilationUnit cu = refactorService.findCompilationUnitInOpenJavaProjects(workspace, payload.getRelativePath());
+
+         if (cu == null) {
+            System.out.println("[DBG] Extract Method: Could not find compilation unit for: " + payload.getRelativePath());
+            return;
+         }
+
+         DropPlacementResult placement = resolveDropPlacement(cu, dropLine);
+         if (!placement.valid) {
+            System.out.println("[DBG] Extract Method: " + placement.message);
+            return;
+         }
+
+         System.out.println("    [resolved] extractedMethodLocation=" + placement.extractedMethodLocation);
+         /*
+          * Run Extract Method Refactoring
+         */
+         refactorService.performExtraction(cu, extractionTargets, placement.extractedMethodLocation);
       }
       else {
          System.out.println("[DBG] [dropzone] no payload received; snippet-only drop.");
@@ -273,21 +399,33 @@ public class EditorDropStartup implements IStartup {
    }
 
    private int getDropLine(ITextEditor editor, StyledText widget, DropTargetEvent event) {
-      if (editor == null || widget == null || event == null || widget.isDisposed()) {
+      if (editor == null || widget == null || widget.isDisposed()) {
          return -1;
       }
 
       try {
-         org.eclipse.swt.graphics.Point controlPoint = widget.toControl(new org.eclipse.swt.graphics.Point(event.x, event.y));
+         IDocument doc = editor.getDocumentProvider().getDocument(editor.getEditorInput());
+         if (doc == null) {
+            return -1;
+         }
 
-         int offset = widget.getOffsetAtPoint(controlPoint);
+         int offset = -1;
+
+         var sel = editor.getSelectionProvider().getSelection();
+         if (sel instanceof ITextSelection ts) {
+            offset = ts.getOffset();
+         }
+
          if (offset < 0) {
             offset = widget.getCaretOffset();
          }
 
-         IDocument doc = editor.getDocumentProvider().getDocument(editor.getEditorInput());
-         if (doc == null) {
+         if (offset < 0) {
             return -1;
+         }
+
+         if (offset > doc.getLength()) {
+            offset = doc.getLength();
          }
 
          return doc.getLineOfOffset(offset) + 1; // 1-based
