@@ -49,6 +49,33 @@ public class DropzoneView extends ViewPart {
 
    public static final String ID = "view.DropzoneView";
 
+   // ── Internal list item ────────────────────────────────────────────────────
+
+   /*public static class DropItem {
+      public final String content;
+      public final String label;
+      public final CloneDragPayload payload;
+   
+      public DropItem(String content, CloneDragPayload payload) {
+         this.content = content;
+         this.payload = payload;
+         String t = content.trim().replace('\n', ' ');
+         this.label = t.length() > 50 ? t.substring(0, 50) + "\u2026" : t;
+      }
+   
+      public DropItem(String content) {
+         this.content = content;
+         this.payload = null;
+         String t = content.trim().replace('\n', ' ');
+         this.label = t.length() > 50 ? t.substring(0, 50) + "\u2026" : t;
+      }
+   
+      @Override
+      public String toString() {
+         return label;
+      }
+   }*/
+
    public static class DropItem {
       public final String content;
       public final CloneDragPayload payload;
@@ -77,6 +104,21 @@ public class DropzoneView extends ViewPart {
 
    private DropItem draggingItem = null;
 
+   // ── View lifecycle ────────────────────────────────────────────────────────
+
+   /*
+   private ListViewer listViewer;
+   
+   @Override
+   public void createPartControl(Composite parent) {
+      listViewer = new ListViewer(parent, SWT.BORDER | SWT.V_SCROLL | SWT.MULTI);
+      listViewer.setContentProvider(ArrayContentProvider.getInstance());
+      listViewer.setLabelProvider(new LabelProvider());
+      listViewer.setInput(items);
+   
+      setupDragSource();
+      contributeToolbar();
+   }*/
    private TableViewer tableViewer;
 
    @Override
@@ -92,7 +134,6 @@ public class DropzoneView extends ViewPart {
 
       setupDragSource();
       contributeToolbar();
-      setPartName("CLONE DROP ZONE");
    }
 
    private void createColumns() {
@@ -117,6 +158,85 @@ public class DropzoneView extends ViewPart {
          }
       });
    }
+
+   // ── Drag source (Dropzone → editor) ──────────────────────────────────────
+
+   /*private void setupDragSource_old() {
+      DragSource dragSource = new DragSource(listViewer.getControl(), DND.DROP_COPY | DND.DROP_MOVE);
+   
+      dragSource.setTransfer(new Transfer[] { DropzoneTransfer.getInstance(), TextTransfer.getInstance() });
+   
+      dragSource.addDragListener(new DragSourceAdapter() {
+         @Override
+         public void dragStart(DragSourceEvent event) {
+            IStructuredSelection sel = listViewer.getStructuredSelection();
+            if (sel.isEmpty()) {
+               event.doit = false;
+               return;
+            }
+            dragging = ((DropItem) sel.getFirstElement()).content;
+         }
+   
+         @Override
+         public void dragSetData(DragSourceEvent event) {
+            if (DropzoneTransfer.getInstance().isSupportedType(event.dataType)) {
+               event.data = dragging;
+            }
+            else if (TextTransfer.getInstance().isSupportedType(event.dataType)) {
+               event.data = dragging;
+            }
+         }
+   
+         @Override
+         public void dragFinished(DragSourceEvent event) {
+            dragging = null;
+         }
+      });
+   }*/
+
+   /*   private void setupDragSource() {
+      DragSource dragSource = new DragSource(listViewer.getControl(), DND.DROP_COPY | DND.DROP_MOVE);
+   
+      dragSource.setTransfer(new Transfer[] { DropzoneTransfer.getInstance(), TextTransfer.getInstance() });
+   
+      dragSource.addDragListener(new DragSourceAdapter() {
+         @Override
+         public void dragStart(DragSourceEvent event) {
+            IStructuredSelection sel = listViewer.getStructuredSelection();
+            if (sel.isEmpty()) {
+               event.doit = false;
+               return;
+            }
+            draggingItem = (DropItem) sel.getFirstElement();
+         }
+   
+         @Override
+         public void dragSetData(DragSourceEvent event) {
+            if (draggingItem == null) {
+               event.doit = false;
+               return;
+            }
+   
+            System.out.println("[DBG] dragSetData dataType=" + event.dataType.type);
+   
+            if (DropzoneTransfer.getInstance().isSupportedType(event.dataType)) {
+               System.out.println("[DBG] dragSetData custom transfer payload=" + (draggingItem.payload == null ? "null" : draggingItem.payload.getClass().getName()));
+               event.data = draggingItem.payload;
+               return;
+            }
+   
+            if (TextTransfer.getInstance().isSupportedType(event.dataType)) {
+               System.out.println("[DBG] dragSetData text transfer string=" + (draggingItem.content == null ? "null" : "len=" + draggingItem.content.length()));
+               event.data = draggingItem.content;
+            }
+         }
+   
+         @Override
+         public void dragFinished(DragSourceEvent event) {
+            draggingItem = null;
+         }
+      });
+   }*/
 
    private void setupDragSource() {
       DragSource dragSource = new DragSource(tableViewer.getControl(), DND.DROP_COPY | DND.DROP_MOVE);
@@ -162,6 +282,46 @@ public class DropzoneView extends ViewPart {
          }
       });
    }
+
+   // ── Toolbar ───────────────────────────────────────────────────────────────
+
+   /*
+    * private void contributeToolbar() {
+      IToolBarManager tbm = getViewSite().getActionBars().getToolBarManager();
+   
+      Action addAction = new Action("Add from Editor Selection") {
+         @Override
+         public void run() {
+            addFromEditorSelection();
+         }
+      };
+      addAction.setToolTipText("Add the currently selected text from the active editor to the Dropzone");
+   
+      Action removeAction = new Action("Remove Selected") {
+         @Override
+         public void run() {
+            IStructuredSelection sel = listViewer.getStructuredSelection();
+            sel.forEach(o -> items.remove(o));
+            listViewer.refresh();
+         }
+      };
+      removeAction.setToolTipText("Remove the selected snippet(s) from the Dropzone");
+   
+      Action clearAction = new Action("Clear All") {
+         @Override
+         public void run() {
+            if (!items.isEmpty() && MessageDialog.openConfirm(getSite().getShell(), "Clear Dropzone", "Remove all snippets?")) {
+               items.clear();
+               listViewer.refresh();
+            }
+         }
+      };
+      clearAction.setToolTipText("Clear all snippets from the Dropzone");
+   
+      tbm.add(addAction);
+      tbm.add(removeAction);
+      tbm.add(clearAction);
+   }*/
 
    // ── Toolbar ───────────────────────────────────────────────────────────────
 
@@ -463,6 +623,22 @@ public class DropzoneView extends ViewPart {
       });
    }
 
+   // ── Public API ────────────────────────────────────────────────────────────
+   /*public void addSnippet(String content, CloneDragPayload payload) {
+      getSite().getShell().getDisplay().asyncExec(() -> {
+         items.add(new DropItem(content, payload));
+         listViewer.refresh();
+      });
+   }*/
+
+   /** Adds a snippet to the list. Safe to call from any thread. */
+   /*   public void addSnippet(String content) {
+      getSite().getShell().getDisplay().asyncExec(() -> {
+         items.add(new DropItem(content));
+         listViewer.refresh();
+      });
+   }
+   */
    @Override
    public void setFocus() {
       tableViewer.getControl().setFocus();
