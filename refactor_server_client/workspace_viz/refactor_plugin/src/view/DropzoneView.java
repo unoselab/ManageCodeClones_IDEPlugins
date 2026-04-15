@@ -1,9 +1,11 @@
 package view;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import org.eclipse.jface.action.Action;
+import org.eclipse.jface.action.IMenuManager;
 import org.eclipse.jface.action.IToolBarManager;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.text.ITextSelection;
@@ -25,6 +27,10 @@ import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import refactor_plugin.dnd.DropzoneTransfer;
+import refactor_plugin.handlers.CloneRecordLiveExtract;
+import refactor_plugin.model.CloneContext;
+import refactor_plugin.model.CloneRecord;
+import refactor_plugin.util.CloneRefactoring;
 
 /**
  * "Dropzone" sidebar view.
@@ -35,6 +41,9 @@ import refactor_plugin.dnd.DropzoneTransfer;
  *
  *   • Clone-aware path  — if the target file was opened from the CloneGraphView,
  *                         EditorDropStartup applies the pre-computed Extract Method.
+ *   • Multi-group path  — rows tagged with {@code [classid]}: multi-select, then drag
+ *                         onto an editor or use the view menu / toolbar
+ *                         "Apply selected clone groups to active editor".
  *   • Generic-wrap path — otherwise, prompts for a method name and inserts the
  *                         snippet wrapped in a method definition.
  *
@@ -48,12 +57,20 @@ public class DropzoneView extends ViewPart {
 
     public static class DropItem {
         public final String content;
+        /** When set (e.g. from graph-focused add), multi-select drag sends class ids for parallel refactor. */
+        public final String classid;
         public final String label;
 
         public DropItem(String content) {
+            this(content, null);
+        }
+
+        public DropItem(String content, String classid) {
             this.content = content;
+            this.classid = classid;
             String t = content.trim().replace('\n', ' ');
-            this.label = t.length() > 50 ? t.substring(0, 50) + "\u2026" : t;
+            this.label = (classid != null && !classid.isBlank() ? "[" + classid + "] " : "")
+                    + (t.length() > 50 ? t.substring(0, 50) + "\u2026" : t);
         }
 
         @Override public String toString() { return label; }
@@ -92,8 +109,30 @@ public class DropzoneView extends ViewPart {
             @Override
             public void dragStart(DragSourceEvent event) {
                 IStructuredSelection sel = listViewer.getStructuredSelection();
-                if (sel.isEmpty()) { event.doit = false; return; }
-                dragging = ((DropItem) sel.getFirstElement()).content;
+                if (sel.isEmpty()) {
+                    event.doit = false;
+                    return;
+                }
+                Object[] selected = sel.toArray();
+                LinkedHashSet<String> classids = new LinkedHashSet<>();
+                boolean allHaveClassid = true;
+                for (Object o : selected) {
+                    if (!(o instanceof DropItem di)) {
+                        event.doit = false;
+                        return;
+                    }
+                    if (di.classid == null || di.classid.isBlank()) {
+                        allHaveClassid = false;
+                    } else {
+                        classids.add(di.classid.trim());
+                    }
+                }
+                if (!classids.isEmpty() && allHaveClassid) {
+                    dragging = CloneRefactoring.DROPZONE_CLASSIDS_PAYLOAD
+                            + String.join("\n", classids);
+                } else {
+                    dragging = ((DropItem) sel.getFirstElement()).content;
+                }
             }
 
             @Override
@@ -144,9 +183,71 @@ public class DropzoneView extends ViewPart {
         };
         clearAction.setToolTipText("Clear all snippets from the Dropzone");
 
+        String applyTip =
+                "Same as multi-select drag to a Java editor: live + parallel JSON refactor "
+                + "for every selected row that has a [classid].";
+        Action applyMultiToolbar = new Action("Apply selected clone groups to active editor") {
+            @Override public void run() {
+                applySelectedCloneGroupsToActiveEditor();
+            }
+        };
+        applyMultiToolbar.setToolTipText(applyTip);
+        Action applyMultiMenu = new Action("Apply selected clone groups to active editor") {
+            @Override public void run() {
+                applySelectedCloneGroupsToActiveEditor();
+            }
+        };
+        applyMultiMenu.setToolTipText(applyTip);
+
         tbm.add(addAction);
+        tbm.add(applyMultiToolbar);
         tbm.add(removeAction);
         tbm.add(clearAction);
+
+        IMenuManager menu = getViewSite().getActionBars().getMenuManager();
+        menu.add(applyMultiMenu);
+    }
+
+    /**
+     * Menu/toolbar path for multi-group refactor (caret used for placement when not dropping).
+     */
+    private void applySelectedCloneGroupsToActiveEditor() {
+        IStructuredSelection sel = listViewer.getStructuredSelection();
+        if (sel.isEmpty()) {
+            MessageDialog.openWarning(getSite().getShell(), "Dropzone",
+                    "Select one or more drop rows that show a [classid] prefix.");
+            return;
+        }
+        LinkedHashSet<String> classids = new LinkedHashSet<>();
+        for (Object o : sel.toArray()) {
+            if (!(o instanceof DropItem di)) {
+                continue;
+            }
+            if (di.classid == null || di.classid.isBlank()) {
+                MessageDialog.openWarning(getSite().getShell(), "Dropzone",
+                        "Every selected row must have a clone group id (label starts with [classid]).\n"
+                        + "Add from the editor while the matching clone is focused in the graph.");
+                return;
+            }
+            classids.add(di.classid.trim());
+        }
+        if (classids.isEmpty()) {
+            return;
+        }
+        IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+        if (window == null) {
+            return;
+        }
+        var activeEditor = window.getActivePage().getActiveEditor();
+        if (!(activeEditor instanceof ITextEditor editor)) {
+            MessageDialog.openWarning(getSite().getShell(), "Dropzone",
+                    "No Java/text editor is active. Activate the target editor, then run this action.");
+            return;
+        }
+        String payload = CloneRefactoring.DROPZONE_CLASSIDS_PAYLOAD
+                + String.join("\n", classids);
+        CloneRefactoring.applyFromDropzoneClassidsPayload(editor, getSite().getShell(), payload,
+                -1);
     }
 
     // ── Add from editor selection ─────────────────────────────────────────────
@@ -171,15 +272,31 @@ public class DropzoneView extends ViewPart {
             return;
         }
 
-        addSnippet(ts.getText());
+        String classidToAttach = null;
+        CloneContext ctx = CloneContext.get();
+        String focus = ctx.graphFocusClassid;
+        if (focus != null && !focus.isBlank()) {
+            CloneRecord rec = ctx.recordMap.get(focus.trim());
+            String fp = CloneRecordLiveExtract.absoluteFilePathForEditor(editor);
+            if (rec != null && fp != null
+                    && CloneRecordLiveExtract.isSameFileCloneRecordForEditor(rec, fp)) {
+                classidToAttach = focus.trim();
+            }
+        }
+        addSnippet(ts.getText(), classidToAttach);
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
     /** Adds a snippet to the list. Safe to call from any thread. */
     public void addSnippet(String content) {
+        addSnippet(content, null);
+    }
+
+    /** Adds a snippet; optional {@code classid} enables multi-select drag to refactor several groups. */
+    public void addSnippet(String content, String classid) {
         getSite().getShell().getDisplay().asyncExec(() -> {
-            items.add(new DropItem(content));
+            items.add(new DropItem(content, classid));
             listViewer.refresh();
         });
     }

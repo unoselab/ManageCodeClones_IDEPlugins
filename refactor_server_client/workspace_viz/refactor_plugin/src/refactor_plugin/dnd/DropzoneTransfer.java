@@ -9,7 +9,9 @@ import org.eclipse.swt.dnd.TransferData;
  * view. This lets EditorDropStartup distinguish a Dropzone drag (→ clone-aware
  * or generic-wrap path) from an ordinary editor-to-editor text drag.
  *
- * The payload is a UTF-8 encoded snippet string.
+ * The payload is a UTF-8 string: either a code snippet, or {@code DROPZONE_CLASSIDS:\n}
+ * followed by one clone {@code classid} per line when the user multi-selects Dropzone rows
+ * that all carry ids (see {@link view.DropzoneView}).
  */
 public class DropzoneTransfer extends ByteArrayTransfer {
 

@@ -35,8 +35,6 @@ import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.texteditor.ITextEditor;
 
-import view.CloneGraphView;
-
 import refactor_plugin.dnd.DropzoneTransfer;
 import refactor_plugin.handlers.CloneRecordLiveExtract;
 import refactor_plugin.handlers.ExtractMethodWorkflow;
@@ -230,6 +228,12 @@ public class EditorDropStartup implements IStartup {
      */
     private void handleDropzoneSnippet(ITextEditor editor, String snippet, Shell shell,
             int dropSourceOffset) {
+        if (CloneRefactoring.isDropzoneClassidsPayload(snippet)) {
+            CloneRefactoring.applyFromDropzoneClassidsPayload(editor, shell, snippet,
+                    dropSourceOffset);
+            return;
+        }
+
         int placement = dropSourceOffset >= 0 ? dropSourceOffset : readPlacementCaret(editor);
         String      filePath = getEditorFilePath(editor);
         CloneRecord record   = filePath != null ? findRecordForFile(filePath) : null;
@@ -245,7 +249,8 @@ public class EditorDropStartup implements IStartup {
             if (!confirm) { return; }
 
             CloneRecordLiveExtract.Result r =
-                    applyCloneRefactorWithLiveFirst(editor, shell, record, filePath, placement);
+                    CloneRefactoring.applyCloneRefactorWithLiveFirst(editor, shell, record,
+                            filePath, placement);
             if (r != CloneRecordLiveExtract.Result.FAILED) {
                 MessageDialog.openInformation(shell, "Extract Method Applied",
                         "Extract method applied for " + record.classid
@@ -427,7 +432,8 @@ public class EditorDropStartup implements IStartup {
                                     "ExportQuarkus demo: both sites updated (Command Action 02).");
                         }
                     } else {
-                        r = applyCloneRefactorWithLiveFirst(editor, shell, rec, filePath, placement);
+                        r = CloneRefactoring.applyCloneRefactorWithLiveFirst(editor, shell, rec,
+                                filePath, placement);
                         if (r != CloneRecordLiveExtract.Result.FAILED) {
                             MessageDialog.openInformation(shell, "Extract Method Applied",
                                     "Done: " + rec.classid
@@ -466,28 +472,6 @@ public class EditorDropStartup implements IStartup {
                 + "trailing whitespace before class } \u2192 end of class; else "
                 + "replaceQuarkusDependencies(...) (default).\n\n"
                 + "Use Ctrl+Z to undo.";
-    }
-
-    /**
-     * Tries {@link CloneRecordLiveExtract}; on {@code NOT_APPLICABLE} applies JSON edits.
-     */
-    private static CloneRecordLiveExtract.Result applyCloneRefactorWithLiveFirst(
-            ITextEditor editor, Shell shell, CloneRecord record, String filePath,
-            int placementSourceOffset) {
-        CloneRecordLiveExtract.Result live =
-                CloneRecordLiveExtract.tryApplyLive(editor, shell, record, filePath,
-                        placementSourceOffset);
-        if (live == CloneRecordLiveExtract.Result.NOT_APPLICABLE) {
-            CloneRecordLiveExtract.Result demo =
-                    CloneRecordLiveExtract.tryApplyExportQuarkusDemo(editor, shell, filePath,
-                            placementSourceOffset);
-            if (demo != CloneRecordLiveExtract.Result.NOT_APPLICABLE) {
-                return demo;
-            }
-            CloneRefactoring.apply(shell, record);
-            return CloneRecordLiveExtract.Result.SUCCESS;
-        }
-        return live;
     }
 
     private static int readPlacementCaret(ITextEditor editor) {
