@@ -1,5 +1,6 @@
 package refactor_plugin.handlers;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -8,9 +9,12 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaProject;
@@ -34,7 +38,11 @@ import refactor_plugin.model.CloneRecord.CloneSource;
  * {@code IMethod.delete}, batched {@code ASTRewrite}, optional {@code ListRewrite} move).
  *
  * <p>The professor’s reference handler is not modified for this path; concepts are
- * applied here and in {@link ExtractMethodWorkflow} per the README four-step pipeline.
+ * applied here and in {@link ExtractMethodWorkflow} per the README four-step pipeline.</p>
+ *
+ * <p><b>Clone Graph → JSON:</b> use {@link #tryApplyLiveForClassid} with the focused
+ * {@code classid} and the active Java editor; ranges come from {@code sources[].range} in
+ * {@code all_refactor_results.json} (same pipeline as Dropzone drag-and-drop).</p>
  */
 public final class CloneRecordLiveExtract {
 
@@ -47,6 +55,80 @@ public final class CloneRecordLiveExtract {
     }
 
     private CloneRecordLiveExtract() {}
+
+    /**
+     * Resolves an absolute OS path for a Java editor (workspace {@code IFile}, EFS / file-store,
+     * or URI). Used by drag-drop and Clone Graph when {@code ICompilationUnit#getResource()} is
+     * {@code null}.
+     */
+    public static String absoluteFilePathForEditor(ITextEditor editor) {
+        if (editor == null) {
+            return null;
+        }
+        var input = editor.getEditorInput();
+        if (input == null) {
+            return null;
+        }
+
+        try {
+            java.lang.reflect.Method getFile = input.getClass().getMethod("getFile");
+            Object iFile = getFile.invoke(input);
+            if (iFile != null) {
+                java.lang.reflect.Method getLoc = iFile.getClass().getMethod("getLocation");
+                Object loc = getLoc.invoke(iFile);
+                if (loc instanceof IPath p && !p.isEmpty()) {
+                    return p.toOSString();
+                }
+            }
+        } catch (Exception ignored) { /* not IFileEditorInput */ }
+
+        IPath ipath = input.getAdapter(IPath.class);
+        if (ipath != null) {
+            String s = ipath.toOSString();
+            if (new java.io.File(s).exists()) {
+                return s;
+            }
+            IPath wsLoc = Platform.getLocation();
+            if (wsLoc != null) {
+                return wsLoc.append(ipath.makeRelative()).toOSString();
+            }
+            return s;
+        }
+
+        try {
+            URI uri = input.getAdapter(URI.class);
+            if (uri != null) {
+                return Paths.get(uri).normalize().toString();
+            }
+        } catch (Exception ignored) { /* */ }
+
+        try {
+            java.lang.reflect.Method getUri = input.getClass().getMethod("getURI");
+            Object o = getUri.invoke(input);
+            if (o instanceof URI uri2 && "file".equalsIgnoreCase(uri2.getScheme())) {
+                return Paths.get(uri2).normalize().toString();
+            }
+        } catch (Exception ignored) { /* not FileStoreEditorInput */ }
+
+        try {
+            IJavaElement je = JavaUI.getEditorInputJavaElement(editor.getEditorInput());
+            if (je instanceof ICompilationUnit cu) {
+                IResource res = cu.getResource();
+                if (res != null && res.getLocation() != null) {
+                    return res.getLocation().toOSString();
+                }
+                var root = ResourcesPlugin.getWorkspace().getRoot();
+                if (root != null) {
+                    IFile f = root.getFile(cu.getPath());
+                    if (f.exists() && f.getLocation() != null) {
+                        return f.getLocation().toOSString();
+                    }
+                }
+            }
+        } catch (Exception ignored) { /* */ }
+
+        return null;
+    }
 
     /**
      * Runs the fixed two-site ExportQuarkus demo (same ranges as Command Action 02) when the
@@ -84,6 +166,40 @@ public final class CloneRecordLiveExtract {
     }
 
     /**
+     * {@code true} when every site in {@code record} is the same Java file as the editor
+     * (including JSON {@code systems/…} vs workspace copy under another project root).
+     */
+    public static boolean isSameFileCloneRecordForEditor(CloneRecord record, String editorFilePath) {
+        if (record == null || record.sources == null || record.sources.isEmpty()) {
+            return false;
+        }
+        if (editorFilePath == null || editorFilePath.isBlank()) {
+            return false;
+        }
+        return allSourcesSameFileAs(record, editorFilePath);
+    }
+
+    /**
+     * Looks up {@code classid} in {@link CloneContext#get()}{@code .recordMap} and runs the
+     * same live extract as drag-and-drop: {@code sources[].range} from JSON →
+     * {@link ExtractMethodWorkflow#runWorkflow}. This is the programmatic counterpart to
+     * choosing that clone in the graph then dropping on the editor.
+     *
+     * @param placementSourceOffset see {@link #tryApplyExportQuarkusDemo}
+     */
+    public static Result tryApplyLiveForClassid(ITextEditor editor, Shell shell, String classid,
+            String editorFilePath, int placementSourceOffset) {
+        if (classid == null || classid.isBlank()) {
+            return Result.NOT_APPLICABLE;
+        }
+        CloneRecord record = CloneContext.get().recordMap.get(classid.trim());
+        if (record == null) {
+            return Result.NOT_APPLICABLE;
+        }
+        return tryApplyLive(editor, shell, record, editorFilePath, placementSourceOffset);
+    }
+
+    /**
      * @param placementSourceOffset see {@link #tryApplyExportQuarkusDemo}
      */
     public static Result tryApplyLive(ITextEditor editor, Shell shell, CloneRecord record,
@@ -96,12 +212,17 @@ public final class CloneRecordLiveExtract {
             if (cu == null) {
                 return Result.NOT_APPLICABLE;
             }
-            if (!allSourcesSameFileAs(record, editorFilePath)) {
+            // Prefer the Java model path — it can differ from Dropzone / toolbar string (URI, links).
+            String pathForSameFile = editorFilePath;
+            IResource resCheck = cu.getResource();
+            if (resCheck != null && resCheck.getLocation() != null) {
+                pathForSameFile = resCheck.getLocation().toOSString();
+            }
+            if (!allSourcesSameFileAs(record, pathForSameFile)) {
                 return Result.NOT_APPLICABLE;
             }
 
-            String finalName = unifiedMethodName(record);
-            List<ExtractMethodWorkflow.ExtractionTarget> targets = buildTargets(record, finalName);
+            List<ExtractMethodWorkflow.ExtractionTarget> targets = buildTargets(record);
             if (targets.isEmpty()) {
                 return Result.NOT_APPLICABLE;
             }
@@ -111,7 +232,12 @@ public final class CloneRecordLiveExtract {
             int placementOff = placementSourceOffset >= 0 ? placementSourceOffset
                     : caretOffset(editor);
             ExtractMethodWorkflow.runWorkflow(cu, targets, moveAfter, placementOff);
-            ExtractMethodWorkflow.revealExtractedMethod(cu, finalName, editor);
+            String primaryRevealName = targets.stream()
+                    .filter(t -> t.isPrimary)
+                    .map(t -> t.methodName)
+                    .findFirst()
+                    .orElse("extractedM1Block1");
+            ExtractMethodWorkflow.revealExtractedMethod(cu, primaryRevealName, editor);
             return Result.SUCCESS;
         } catch (Exception e) {
             MessageDialog.openError(shell, "Live Extract Method failed",
@@ -120,21 +246,12 @@ public final class CloneRecordLiveExtract {
         }
     }
 
-    private static String unifiedMethodName(CloneRecord record) {
-        if (record.extracted_method != null
-                && record.extracted_method.method_name != null
-                && !record.extracted_method.method_name.isBlank()) {
-            return record.extracted_method.method_name.trim();
-        }
-        return "extractedMethod";
-    }
-
     /**
-     * Primary = lowest line in file (surviving method). Other sites get unique temp names,
+     * Same naming as {@link ExtractMethodWorkflow#exportQuarkusDemoTargets()}: primary
+     * {@code extractedM1Block1} (lowest line), further sites {@code extractedM1Block2}, …
      * then merged via {@link ExtractMethodWorkflow} (delete secondaries, rebind calls).
      */
-    private static List<ExtractMethodWorkflow.ExtractionTarget> buildTargets(CloneRecord record,
-            String primaryName) {
+    private static List<ExtractMethodWorkflow.ExtractionTarget> buildTargets(CloneRecord record) {
         List<CloneSourceWithRange> with = new ArrayList<>();
         for (CloneSource s : record.sources) {
             if (s == null || s.range == null) {
@@ -156,7 +273,7 @@ public final class CloneRecordLiveExtract {
         for (int i = 0; i < with.size(); i++) {
             CloneSourceWithRange w = with.get(i);
             boolean primary = (i == 0);
-            String name = primary ? primaryName : primaryName + "_tmp_" + i;
+            String name = "extractedM1Block" + (i + 1);
             out.add(new ExtractMethodWorkflow.ExtractionTarget(w.startLine, w.endLine, name,
                     primary));
         }
@@ -216,17 +333,20 @@ public final class CloneRecordLiveExtract {
         }
         String norm = editorAbsPath.replace('\\', '/');
         CloneContext ctx = CloneContext.get();
+        String keyEditor = CloneContext.canonicalJavaSourceKey(norm);
         for (CloneSource s : record.sources) {
             if (s == null || s.file == null) {
                 return false;
             }
-            String resolved = ctx.resolvePath(s.file).replace('\\', '/');
-            if (resolved.equals(norm)) {
+            if (ctx.pathsEqualForCloneData(norm, s.file)) {
                 continue;
             }
-            String srcNorm = s.file.replace('\\', '/');
-            if (norm.endsWith("/" + srcNorm)) {
-                continue;
+            if (keyEditor != null) {
+                String resolved = ctx.resolvePath(s.file).replace('\\', '/');
+                String keySrc = CloneContext.canonicalJavaSourceKey(resolved);
+                if (keySrc != null && keyEditor.equals(keySrc)) {
+                    continue;
+                }
             }
             return false;
         }
@@ -237,7 +357,9 @@ public final class CloneRecordLiveExtract {
             throws Exception {
         IJavaElement je = JavaUI.getEditorInputJavaElement(editor.getEditorInput());
         if (je instanceof ICompilationUnit cu) {
-            return cu.getPrimary();
+            // Keep the editor's working copy when present — offsets and LTK must match the buffer
+            // the user is editing; getPrimary() can disagree and yield "selection is not valid".
+            return cu;
         }
         return findCompilationUnitForAbsolutePath(editorFilePath);
     }
@@ -247,6 +369,20 @@ public final class CloneRecordLiveExtract {
             return null;
         }
         Path want = Paths.get(absPath).normalize();
+
+        try {
+            IFile f = ResourcesPlugin.getWorkspace().getRoot()
+                    .getFileForLocation(org.eclipse.core.runtime.Path.fromOSString(absPath));
+            if (f != null && f.exists()) {
+                IJavaElement je = JavaCore.create(f);
+                if (je instanceof ICompilationUnit cu) {
+                    return cu.getPrimary();
+                }
+            }
+        } catch (Exception ignored) { /* continue */ }
+
+        String wantKey = CloneContext.canonicalJavaSourceKey(want.toString().replace('\\', '/'));
+
         for (IProject p : ResourcesPlugin.getWorkspace().getRoot().getProjects()) {
             if (!p.isOpen()) {
                 continue;
@@ -276,6 +412,13 @@ public final class CloneRecordLiveExtract {
                             Path got = Paths.get(res.getLocation().toOSString()).normalize();
                             if (want.equals(got)) {
                                 return cu.getPrimary();
+                            }
+                            if (wantKey != null) {
+                                String keyGot = CloneContext.canonicalJavaSourceKey(
+                                        got.toString().replace('\\', '/'));
+                                if (keyGot != null && wantKey.equals(keyGot)) {
+                                    return cu.getPrimary();
+                                }
                             }
                         }
                     }

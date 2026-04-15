@@ -68,6 +68,9 @@ public class CloneRefactoring {
 
     private static final Pattern RANGE_PAT = Pattern.compile("^(\\d+)-(\\d+)$");
 
+    /** Same surviving name as {@link refactor_plugin.handlers.CloneRecordLiveExtract} live path. */
+    private static final String PRIMARY_LTK_METHOD_NAME = "extractedM1Block1";
+
     /** Immutable pending document edit: replace [offset, offset+length) with text. */
     private record Edit(int offset, int length, String text) {}
 
@@ -106,7 +109,7 @@ public class CloneRefactoring {
             boolean doInsert = insertMethodIn.isEmpty()
                                || insertMethodIn.contains(absFile);
             applyToFile(shell, absFile, entry.getValue(),
-                        doInsert ? record.extracted_method : null);
+                        doInsert ? record.extracted_method : null, record);
         }
     }
 
@@ -114,7 +117,7 @@ public class CloneRefactoring {
 
     private static void applyToFile(Shell shell, String absFile,
                                      List<CloneSource> sources,
-                                     ExtractedMethod em) {
+                                     ExtractedMethod em, CloneRecord record) {
         try {
             URI fileUri = new java.io.File(absFile).toURI();
             IFileStore    fileStore = EFS.getLocalFileSystem().getStore(fileUri);
@@ -135,7 +138,7 @@ public class CloneRefactoring {
             List<Edit> edits = new ArrayList<>();
 
             for (CloneSource src : sources) {
-                Edit e = buildRangeEdit(doc, src);
+                Edit e = buildRangeEdit(doc, src, record);
                 if (e != null) { edits.add(e); }
             }
 
@@ -149,7 +152,7 @@ public class CloneRefactoring {
                             s -> parseEnd(s.enclosing_function.fun_range)))
                     .orElse(null);
                 if (anchor != null) {
-                    Edit e = buildInsertEdit(doc, anchor, em);
+                    Edit e = buildInsertEdit(doc, anchor, em, record);
                     if (e != null) { edits.add(e); }
                 }
             }
@@ -171,9 +174,33 @@ public class CloneRefactoring {
         }
     }
 
+    /**
+     * JSON precomputes {@code extracted} (or {@code extracted_method.method_name}); live LTK
+     * uses {@code extractedM1Block1}. Rewrite identifiers so text fallback matches.
+     */
+    private static String replaceJsonMethodNameWithPrimaryLtk(String text, CloneRecord record) {
+        if (text == null || record == null) {
+            return text;
+        }
+        String oldName = jsonDeclaredExtractName(record);
+        if (PRIMARY_LTK_METHOD_NAME.equals(oldName)) {
+            return text;
+        }
+        return text.replaceAll("\\b" + Pattern.quote(oldName) + "\\b", PRIMARY_LTK_METHOD_NAME);
+    }
+
+    private static String jsonDeclaredExtractName(CloneRecord record) {
+        if (record.extracted_method != null
+                && record.extracted_method.method_name != null
+                && !record.extracted_method.method_name.isBlank()) {
+            return record.extracted_method.method_name.trim();
+        }
+        return "extracted";
+    }
+
     // ── build edit: clone range → replacement_code ────────────────────────────
 
-    private static Edit buildRangeEdit(IDocument doc, CloneSource src)
+    private static Edit buildRangeEdit(IDocument doc, CloneSource src, CloneRecord record)
             throws org.eclipse.jface.text.BadLocationException {
         int[] r = parseRangeInts(src.range);
         if (r == null) { return null; }
@@ -187,13 +214,14 @@ public class CloneRefactoring {
                             .replaceAll("\\r?\\n$", "");
         int endOff = doc.getLineOffset(end0) + lastLine.length();
 
-        return new Edit(startOff, endOff - startOff, src.replacement_code);
+        String replacement = replaceJsonMethodNameWithPrimaryLtk(src.replacement_code, record);
+        return new Edit(startOff, endOff - startOff, replacement);
     }
 
     // ── build edit: insert extracted method after enclosing function ──────────
 
     private static Edit buildInsertEdit(IDocument doc, CloneSource anchor,
-                                         ExtractedMethod em)
+                                         ExtractedMethod em, CloneRecord record)
             throws org.eclipse.jface.text.BadLocationException {
         int[] r = parseRangeInts(anchor.enclosing_function.fun_range);
         if (r == null) { return null; }
@@ -208,8 +236,9 @@ public class CloneRefactoring {
         Matcher im = Pattern.compile("^(\\s*)").matcher(closingLine);
         String memberIndent = im.find() ? im.group(1) : "    ";
 
+        String body = replaceJsonMethodNameWithPrimaryLtk(em.code, record);
         // Re-indent each line of the extracted method body
-        String[] codeLines = em.code.replace("\r\n", "\n").replace("\r", "\n")
+        String[] codeLines = body.replace("\r\n", "\n").replace("\r", "\n")
                                     .split("\n", -1);
         StringBuilder sb = new StringBuilder("\n\n");
         for (String line : codeLines) {

@@ -13,6 +13,7 @@ import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IToolBarManager;
@@ -50,16 +51,15 @@ import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.jface.action.IMenuManager;
 import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.ui.JavaUI;
 
-import refactor_plugin.handlers.extract.ExtractionTarget;
+import refactor_plugin.handlers.CloneRecordLiveExtract;
 import refactor_plugin.util.ExtractMethodService;
 
 /**
  * Zest visualization of clones as a <strong>single tree</strong> (like the VS Code D3 panel) with click-to-expand levels: root → package(project) → class → clone instance.
  */
 public class CloneGraphView extends ViewPart {
-
-   private static final String PRJ_ROOT_PATH = "systems/camel-java/";
 
    public static final String ID = "view.CloneGraphView";
 
@@ -121,7 +121,9 @@ public class CloneGraphView extends ViewPart {
 
       hintLabel = new Label(container, SWT.WRAP);
       hintLabel.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
-      hintLabel.setText("Click-to-expand tree: package(project) → class → clone instance. " + "Single-click package/class to expand or collapse. " + "Double-click an instance to open source. Toolbar: Refresh, Toggle layout.");
+      hintLabel.setText("Click-to-expand: package → class → instance. Single-click an instance to focus its classid; "
+            + "toolbar \"Live extract (focus + editor)\" runs the same JSON pipeline as Dropzone drag-and-drop. "
+            + "Double-click opens source. Toolbar: Refresh, Toggle layout.");
 
       graph = new Graph(container, SWT.NONE);
       graph.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
@@ -151,7 +153,7 @@ public class CloneGraphView extends ViewPart {
             if (sel instanceof GraphNode gn) {
                Object data = gn.getData();
                if (data instanceof NodeData nd && nd.isOpenableSite()) {
-                  openSource(nd.source, nd.classid);
+                  openSource(nd.source, nd.record, nd.classid);
                }
             }
          }
@@ -251,7 +253,7 @@ public class CloneGraphView extends ViewPart {
          public void run() {
             NodeData nd = getSelectedNodeData();
             if (nd != null && nd.type == NodeType.INSTANCE && nd.isOpenableSite()) {
-               openSource(nd.source, nd.classid);
+               openSource(nd.source, nd.record, nd.classid);
             }
          }
       });
@@ -331,7 +333,7 @@ public class CloneGraphView extends ViewPart {
             return;
          }
 
-         openSource(nd.source, nd.classid);
+         openSource(nd.source, nd.record, nd.classid);
       });
 
       MenuItem extractMethodItem = new MenuItem(menu, SWT.PUSH);
@@ -350,6 +352,7 @@ public class CloneGraphView extends ViewPart {
       focusItem.setText("Set Focus to Clone Group");
       focusItem.addListener(SWT.Selection, e -> {
          CloneContext.get().setGraphFocus(nd.packageName, nd.className, nd.classid);
+         registerLastOpenedForCloneGroup(nd.record, nd.classid);
          rebuildGraph();
       });
    }
@@ -370,14 +373,6 @@ public class CloneGraphView extends ViewPart {
             return;
          }
 
-         List<ExtractionTarget> extractionTargets = buildExtractionTargets(record);
-         if (extractionTargets.isEmpty()) {
-            MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Could not determine extraction ranges from the selected clone group.");
-            return;
-         }
-
-         String extractedMethodLocation = inferExtractedMethodLocation(selectedSource);
-
          IWorkspace workspace = ResourcesPlugin.getWorkspace();
          ExtractMethodService refactorService = new ExtractMethodService();
          ICompilationUnit cu = refactorService.findCompilationUnitInOpenJavaProjects(workspace, relativePath);
@@ -387,9 +382,33 @@ public class CloneGraphView extends ViewPart {
             return;
          }
 
-         refactorService.performExtraction(cu, extractionTargets, extractedMethodLocation);
+         IEditorPart editorPart = JavaUI.openInEditor(cu);
+         if (!(editorPart instanceof ITextEditor te)) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method",
+                    "Open this compilation unit in a Java text editor to run the same live extract as drag-and-drop.");
+            return;
+         }
 
-         MessageDialog.openInformation(getSite().getShell(), "Extract Method", "Extract method refactoring completed successfully.");
+         String absPath = CloneRecordLiveExtract.absoluteFilePathForEditor(te);
+         if (absPath == null || absPath.isBlank()) {
+            absPath = CloneContext.get().resolvePath(selectedSource.file);
+         }
+
+         CloneRecordLiveExtract.Result r = CloneRecordLiveExtract.tryApplyLiveForClassid(te,
+               getSite().getShell(), nd.classid, absPath, -1);
+         if (r == CloneRecordLiveExtract.Result.NOT_APPLICABLE) {
+            MessageDialog.openInformation(getSite().getShell(), "Extract Method",
+                    "Live extract is not applicable for this clone group on the open file "
+                    + "(e.g. not all clone sites are in this compilation unit).");
+            return;
+         }
+         if (r == CloneRecordLiveExtract.Result.FAILED) {
+            return;
+         }
+
+         MessageDialog.openInformation(getSite().getShell(), "Extract Method",
+               "Extract method applied for " + record.classid + " — " + record.sources.size()
+                     + " clone site(s) (same pipeline as drag-and-drop).");
 
       } catch (Exception ex) {
          MessageDialog.openError(getSite().getShell(), "Extract Method Error", "Failed to apply extract method refactoring.\n\n" + ex.getMessage());
@@ -401,11 +420,7 @@ public class CloneGraphView extends ViewPart {
          return null;
       }
 
-      String normalized = src.file.replace('\\', '/');
-
-      if (normalized.startsWith(PRJ_ROOT_PATH)) {
-         normalized = normalized.substring(PRJ_ROOT_PATH.length());
-      }
+      String normalized = stripSystemsJavaTreePrefix(src.file.replace('\\', '/'));
 
       if (normalized.startsWith("/")) {
          normalized = normalized.substring(1);
@@ -419,86 +434,28 @@ public class CloneGraphView extends ViewPart {
       return normalized;
    }
 
-   private List<ExtractionTarget> buildExtractionTargets(CloneRecord record) {
-      List<ExtractionTarget> targets = new ArrayList<>();
-
-      if (record == null || record.sources == null || record.sources.isEmpty()) {
-         return targets;
+   /**
+    * JSON paths look like {@code systems/<project>-java/org/...}; Eclipse projects use
+    * {@code org/...} under source roots. Strip {@code systems/<name>-java/} for any module.
+    */
+   private static String stripSystemsJavaTreePrefix(String normalizedPath) {
+      if (normalizedPath == null || normalizedPath.isEmpty()) {
+         return normalizedPath;
       }
-
-      class TargetSeed {
-         final int startLine;
-         final int endLine;
-
-         TargetSeed(int startLine, int endLine) {
-            this.startLine = startLine;
-            this.endLine = endLine;
-         }
+      String n = normalizedPath.replace('\\', '/');
+      if (!n.startsWith("systems/")) {
+         return n;
       }
-
-      List<TargetSeed> seeds = new ArrayList<>();
-
-      for (CloneSource src : record.sources) {
-         if (src == null || src.range == null || src.range.isBlank()) {
-            continue;
-         }
-
-         int[] lineRange = parseLineRange(src.range);
-         if (lineRange == null) {
-            continue;
-         }
-
-         seeds.add(new TargetSeed(lineRange[0], lineRange[1]));
+      int p = "systems/".length();
+      int slash = n.indexOf('/', p);
+      if (slash < 0) {
+         return n;
       }
-
-      seeds.sort((a, b) -> {
-         int cmp = Integer.compare(a.startLine, b.startLine);
-         if (cmp != 0) {
-            return cmp;
-         }
-         return Integer.compare(a.endLine, b.endLine);
-      });
-
-      int counter = 1;
-      for (int i = 0; i < seeds.size(); i++) {
-         TargetSeed seed = seeds.get(i);
-         boolean primary = (i == 0);
-         String methodName = "extractedM1Block" + counter++;
-
-         targets.add(new ExtractionTarget(seed.startLine, seed.endLine, methodName, primary));
+      String segment = n.substring(p, slash);
+      if (!segment.endsWith("-java")) {
+         return n;
       }
-
-      return targets;
-   }
-
-   private int[] parseLineRange(String range) {
-      String[] parts = range.split("-");
-      if (parts.length < 2) {
-         return null;
-      }
-
-      try {
-         int start = Integer.parseInt(parts[0].trim());
-         int end = Integer.parseInt(parts[1].trim());
-         if (start <= 0 || end < start) {
-            return null;
-         }
-         return new int[] { start, end };
-      } catch (NumberFormatException ex) {
-         return null;
-      }
-   }
-
-   private String inferExtractedMethodLocation(CloneSource src) {
-      String qn = (src != null && src.enclosing_function != null) ? src.enclosing_function.qualified_name : null;
-
-      if (qn == null || qn.isBlank()) {
-         return "";
-      }
-
-      int lastDot = qn.lastIndexOf('.');
-      String methodName = lastDot >= 0 ? qn.substring(lastDot + 1) : qn;
-      return "After " + methodName + "()";
+      return n.substring(slash + 1);
    }
 
    /** If the Clone Graph part is open, rebuild it (e.g. after JSON load elsewhere). */
@@ -540,6 +497,77 @@ public class CloneGraphView extends ViewPart {
             applyLayout();
          }
       });
+      tbm.add(new Action("Live extract (focus + editor)") {
+         @Override
+         public void run() {
+            runLiveExtractForFocusedClassid();
+         }
+      });
+   }
+
+   /**
+    * Uses {@link CloneContext#get()}{@code .graphFocusClassid} and the active Java editor:
+    * loads the clone group from {@code recordMap} and runs the same pipeline as Dropzone
+    * drag-and-drop ({@link CloneRecordLiveExtract#tryApplyLiveForClassid}).
+    */
+   private void runLiveExtractForFocusedClassid() {
+      CloneContext ctx = CloneContext.get();
+      String cid = ctx.graphFocusClassid;
+      if (cid == null || cid.isBlank()) {
+         MessageDialog.openInformation(getSite().getShell(), "Live extract",
+               "Single-click a clone instance (yellow leaf) to set the focused clone group (classid).");
+         return;
+      }
+      IWorkbenchPage page = getSite().getPage();
+      IEditorPart active = page.getActiveEditor();
+      if (!(active instanceof ITextEditor te)) {
+         MessageDialog.openInformation(getSite().getShell(), "Live extract",
+               "Activate a Java editor on the clone file, then run this action again.");
+         return;
+      }
+      String absPath = CloneRecordLiveExtract.absoluteFilePathForEditor(te);
+      if (absPath == null || absPath.isBlank()) {
+         MessageDialog.openInformation(getSite().getShell(), "Live extract",
+               "Could not resolve the active editor file path.");
+         return;
+      }
+      CloneRecord rec = ctx.recordMap.get(cid);
+      if (rec == null) {
+         MessageDialog.openInformation(getSite().getShell(), "Live extract",
+               "Unknown classid (reload clone JSON): " + cid);
+         return;
+      }
+      if (!MessageDialog.openConfirm(getSite().getShell(), "Apply Extract Method",
+            "Apply live extract for clone group \"" + cid + "\" on the active editor?\n\n"
+                  + "Uses JSON line ranges for all same-file sites in one step (same as "
+                  + "drag-and-drop from the Dropzone). Use Ctrl+Z to undo.")) {
+         return;
+      }
+      CloneRecordLiveExtract.Result r = CloneRecordLiveExtract.tryApplyLiveForClassid(te,
+            getSite().getShell(), cid, absPath, -1);
+      if (r == CloneRecordLiveExtract.Result.NOT_APPLICABLE
+            && rec.sources != null && !rec.sources.isEmpty()
+            && rec.sources.get(0).file != null) {
+         String jsonAbs = ctx.resolvePath(rec.sources.get(0).file);
+         if (jsonAbs != null && !jsonAbs.isBlank() && !jsonAbs.equals(absPath)) {
+            r = CloneRecordLiveExtract.tryApplyLiveForClassid(te, getSite().getShell(), cid,
+                  jsonAbs, -1);
+         }
+      }
+      if (r == CloneRecordLiveExtract.Result.NOT_APPLICABLE) {
+         MessageDialog.openInformation(getSite().getShell(), "Live extract",
+               "Not applicable: this clone group is not on the active file, or Eclipse could not "
+                     + "resolve a Java compilation unit for it.\n\n"
+                     + "Import the folder as a Java project (e.g. systems/camel-java) and open the "
+                     + "file from Package Explorer, or double-click the clone leaf in the graph.");
+         return;
+      }
+      if (r == CloneRecordLiveExtract.Result.FAILED) {
+         return;
+      }
+      int n = rec.sources != null ? rec.sources.size() : 0;
+      MessageDialog.openInformation(getSite().getShell(), "Live extract",
+            "Applied for " + cid + " — " + n + " site(s).");
    }
 
    private void applyLayout() {
@@ -669,6 +697,29 @@ public class CloneGraphView extends ViewPart {
       }
       if (nd.type == NodeType.INSTANCE) {
          ctx.setGraphFocus(nd.packageName, nd.className, nd.classid);
+         registerLastOpenedForCloneGroup(nd.record, nd.classid);
+      }
+   }
+
+   /**
+    * Binds every resolved JSON path for the clone group to {@code classid} so drop/drag
+    * can resolve the record even when the editor uses a different project root than
+    * {@code systems/…} in the JSON.
+    */
+   private static void registerLastOpenedForCloneGroup(CloneRecord r, String classid) {
+      if (r == null || r.sources == null || classid == null || classid.isBlank()) {
+         return;
+      }
+      CloneContext ctx = CloneContext.get();
+      java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+      for (CloneSource s : r.sources) {
+         if (s == null || s.file == null || s.file.isBlank()) {
+            continue;
+         }
+         String abs = ctx.resolvePath(s.file);
+         if (seen.add(abs)) {
+            ctx.lastOpenedByFile.put(abs, classid);
+         }
       }
    }
 
@@ -719,26 +770,54 @@ public class CloneGraphView extends ViewPart {
       }
    }
 
-   private void openSource(CloneSource src, String classid) {
+   private void openSource(CloneSource src, CloneRecord record, String classid) {
       if (src.file == null || src.file.isBlank()) {
          return;
       }
       String absPath = CloneContext.get().resolvePath(src.file);
+      CloneContext ctx = CloneContext.get();
 
       try {
          IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
-         IEditorPart editor;
-         IFile wsFile = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(Path.fromOSString(absPath));
-         if (wsFile != null && wsFile.exists()) {
-            editor = IDE.openEditor(page, wsFile, true);
+         IEditorPart editor = null;
+
+         /*
+          * Prefer JavaUI + ICompilationUnit (same as Package Explorer / drag targets). Opening via
+          * IDE.openEditorOnFileStore binds a generic text editor with no Java element — live
+          * extract then has no CU and fails even though the path is correct on disk.
+          */
+         String rel = toProjectRelativeJavaPath(src);
+         if (rel != null) {
+            ExtractMethodService finder = new ExtractMethodService();
+            ICompilationUnit cu = finder.findCompilationUnitInOpenJavaProjects(
+                  ResourcesPlugin.getWorkspace(), rel);
+            if (cu != null) {
+               editor = JavaUI.openInEditor(cu);
+            }
          }
-         else {
-            URI fileUri = new File(absPath).toURI();
-            IFileStore store = EFS.getLocalFileSystem().getStore(fileUri);
-            editor = IDE.openEditorOnFileStore(page, store);
+         if (editor == null) {
+            IFile wsFile = ResourcesPlugin.getWorkspace().getRoot()
+                  .getFileForLocation(Path.fromOSString(absPath));
+            if (wsFile != null && wsFile.exists()) {
+               editor = IDE.openEditor(page, wsFile, true);
+               IPath loc = wsFile.getLocation();
+               if (loc != null && !loc.isEmpty()) {
+                  ctx.lastOpenedByFile.put(loc.toOSString(), classid);
+               }
+            } else {
+               URI fileUri = new File(absPath).toURI();
+               IFileStore store = EFS.getLocalFileSystem().getStore(fileUri);
+               editor = IDE.openEditorOnFileStore(page, store);
+            }
          }
 
-         CloneContext.get().lastOpenedByFile.put(absPath, classid);
+         registerLastOpenedForCloneGroup(record, classid);
+         if (editor instanceof ITextEditor te) {
+            String edAbs = CloneRecordLiveExtract.absoluteFilePathForEditor(te);
+            if (edAbs != null && !edAbs.isBlank()) {
+               ctx.lastOpenedByFile.put(edAbs, classid);
+            }
+         }
 
          if (editor instanceof ITextEditor te && src.range != null) {
             String[] parts = src.range.split("-");

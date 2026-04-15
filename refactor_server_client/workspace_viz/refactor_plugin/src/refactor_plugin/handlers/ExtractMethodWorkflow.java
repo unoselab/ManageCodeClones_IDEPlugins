@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jdt.core.IBuffer;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
@@ -13,14 +14,18 @@ import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.FieldDeclaration;
+import org.eclipse.jdt.core.dom.LambdaExpression;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.NodeFinder;
 import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.SimpleName;
+import org.eclipse.jdt.core.dom.Statement;
+import org.eclipse.jdt.core.dom.SwitchStatement;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
@@ -59,8 +64,17 @@ public final class ExtractMethodWorkflow {
     private static final int AST_JLS = AST.JLS25;
 
     /**
-     * Same course demo as {@code ExtractMethodHandler} (Command Action 02): two-site extract
-     * on {@code org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java}.
+     * <p><b>Course fallback only</b> (Command Action 02): used when drag-drop cannot bind a
+     * {@link refactor_plugin.model.CloneRecord} but the open file is still this class
+     * ({@link #isExportQuarkusDemoWorkspacePath}).</p>
+     *
+     * <p>For the {@code runtime-refactor_plugin/systems/all_refactor_results.json} corpus
+     * (camel, hive, flink, …), ranges and names come from JSON and
+     * {@link refactor_plugin.handlers.CloneRecordLiveExtract#tryApplyLiveForClassid
+     * CloneRecordLiveExtract.tryApplyLiveForClassid} / {@link
+     * refactor_plugin.handlers.CloneRecordLiveExtract#tryApplyLive tryApplyLive} — do not
+     * duplicate those rows here; keep this block small so it stays aligned with
+     * {@code ExtractMethodHandler}.</p>
      */
     public static final String DEMO_EXPORT_QUARKUS_RELATIVE_PATH =
             "org/apache/camel/dsl/jbang/core/commands/ExportQuarkus.java";
@@ -78,7 +92,24 @@ public final class ExtractMethodWorkflow {
 
     private ExtractMethodWorkflow() {}
 
-    /** Line ranges and method names aligned with {@code ExtractMethodHandler}. */
+    /**
+     * After {@link ICompilationUnit#getBuffer()}{@code .setContents}, persist to disk.
+     * {@link ICompilationUnit#commitWorkingCopy} is only valid for working copies; editors
+     * usually bind the primary CU, which must use {@link ICompilationUnit#save}.
+     */
+    private static void persistAfterBufferEdit(ICompilationUnit cu) throws Exception {
+        if (cu.isWorkingCopy()) {
+            cu.commitWorkingCopy(true, new NullProgressMonitor());
+        } else {
+            cu.save(new NullProgressMonitor(), true);
+        }
+    }
+
+    /**
+     * Line ranges for the ExportQuarkus fallback; method names match
+     * {@link refactor_plugin.handlers.CloneRecordLiveExtract} JSON multi-site naming
+     * ({@code extractedM1Block1}, {@code extractedM1Block2}, …).
+     */
     public static List<ExtractionTarget> exportQuarkusDemoTargets() {
         return List.of(
                 new ExtractionTarget(316, 335, "extractedM1Block1", true),
@@ -413,7 +444,7 @@ public final class ExtractMethodWorkflow {
 
         cu.getBuffer().setContents(document.get());
         cu.reconcile(ICompilationUnit.NO_AST, false, null, null);
-        cu.commitWorkingCopy(true, new NullProgressMonitor());
+        persistAfterBufferEdit(cu);
         return true;
     }
 
@@ -558,7 +589,7 @@ public final class ExtractMethodWorkflow {
 
             compilationUnit.getBuffer().setContents(document.get());
             compilationUnit.reconcile(ICompilationUnit.NO_AST, false, null, null);
-            compilationUnit.commitWorkingCopy(true, new NullProgressMonitor());
+            persistAfterBufferEdit(compilationUnit);
         }
     }
 
@@ -606,7 +637,7 @@ public final class ExtractMethodWorkflow {
 
         compilationUnit.getBuffer().setContents(document.get());
         compilationUnit.reconcile(ICompilationUnit.NO_AST, false, null, null);
-        compilationUnit.commitWorkingCopy(true, new NullProgressMonitor());
+        persistAfterBufferEdit(compilationUnit);
     }
 
     public static String parseTargetMethodName(String locationString) {
@@ -697,7 +728,7 @@ public final class ExtractMethodWorkflow {
 
         compilationUnit.getBuffer().setContents(document.get());
         compilationUnit.reconcile(ICompilationUnit.NO_AST, false, null, null);
-        compilationUnit.commitWorkingCopy(true, new NullProgressMonitor());
+        persistAfterBufferEdit(compilationUnit);
     }
 
     static IMethod findExtractedMethod(ICompilationUnit compilationUnit, String methodName)
@@ -714,10 +745,155 @@ public final class ExtractMethodWorkflow {
 
     private static SourceRange computeSourceRange(ICompilationUnit compilationUnit, int startLine,
             int endLine) throws Exception {
-        String source = compilationUnit.getSource();
+        String source = compilationUnitText(compilationUnit);
         int startOffset = getLineStartOffset(source, startLine);
         int endOffset = getLineEndOffset(source, endLine);
+        startOffset = trimLeadingSpacesAndTabsOnFirstLine(source, startOffset, endOffset);
+        endOffset = trimTrailingWhitespace(source, startOffset, endOffset);
+        if (endOffset <= startOffset) {
+            return new SourceRange(startOffset, 0);
+        }
+
+        ASTParser parser = ASTParser.newParser(AST_JLS);
+        parser.setSource(compilationUnit);
+        parser.setKind(ASTParser.K_COMPILATION_UNIT);
+        parser.setResolveBindings(false);
+        CompilationUnit root =
+                (CompilationUnit) parser.createAST(new NullProgressMonitor());
+        int[] inner = refineBlockBodyToInnerStatementSpan(root, startOffset, endOffset);
+        if (inner != null) {
+            startOffset = inner[0];
+            endOffset = inner[1];
+        }
+        SourceRange snapped = snapToTightestEnclosingStatement(root, startOffset, endOffset);
+        if (snapped != null) {
+            return snapped;
+        }
         return new SourceRange(startOffset, endOffset - startOffset);
+    }
+
+    /** Spaces/tabs only; stops before first non-ws or newline so later lines stay intact. */
+    private static int trimLeadingSpacesAndTabsOnFirstLine(String source, int start,
+            int endExclusive) {
+        int j = start;
+        while (j < endExclusive && j < source.length()) {
+            char c = source.charAt(j);
+            if (c == ' ' || c == '\t') {
+                j++;
+            } else {
+                break;
+            }
+        }
+        return j;
+    }
+
+    /**
+     * Clone JSON often marks only a {@code Block} (from "{@code {}" through "{@code }}") or a
+     * {@code switch} arm such as {@code case BOOLEAN: \{ ... \}} without the following
+     * {@code break}. Eclipse Extract Method needs the inner {@link Statement}s only — not the
+     * {@code case} label line and not delimiters that confuse LTK.
+     */
+    private static int[] refineBlockBodyToInnerStatementSpan(CompilationUnit root,
+            int startOffset, int endOffset) {
+        if (root == null || endOffset <= startOffset) {
+            return null;
+        }
+        NodeFinder finder = new NodeFinder(root, startOffset, endOffset - startOffset);
+        for (ASTNode cur = finder.getCoveringNode(); cur != null; cur = cur.getParent()) {
+            if (!(cur instanceof Block block)) {
+                continue;
+            }
+            ASTNode parent = block.getParent();
+            boolean methodOrLambda = parent instanceof MethodDeclaration
+                    || parent instanceof LambdaExpression;
+            boolean switchArm = parent instanceof SwitchStatement;
+            if (!methodOrLambda && !switchArm) {
+                continue;
+            }
+            int bp = block.getStartPosition();
+            int bq = bp + block.getLength();
+            if (!(startOffset <= bp && endOffset >= bq)) {
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            List<Statement> stmts = block.statements();
+            if (stmts.isEmpty()) {
+                return null;
+            }
+            Statement first = stmts.get(0);
+            Statement last = stmts.get(stmts.size() - 1);
+            int ns = first.getStartPosition();
+            int ne = last.getStartPosition() + last.getLength();
+            if (ne <= ns) {
+                return null;
+            }
+            return new int[] { ns, ne };
+        }
+        return null;
+    }
+
+    private static int trimTrailingWhitespace(String source, int start, int endExclusive) {
+        int e = endExclusive;
+        while (e > start && e <= source.length()) {
+            char c = source.charAt(e - 1);
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                e--;
+            } else {
+                break;
+            }
+        }
+        return e;
+    }
+
+    /** Prefer buffer contents so line numbers match the editor when the unit is open. */
+    private static String compilationUnitText(ICompilationUnit cu) throws Exception {
+        IBuffer buf = cu.getBuffer();
+        if (buf != null) {
+            return buf.getContents();
+        }
+        String s = cu.getSource();
+        return s != null ? s : "";
+    }
+
+    /**
+     * Maps a line box to the smallest {@link Statement} that fully contains it. Line-based
+     * offsets often disagree slightly with the AST (CRLF, unsaved buffer, tool off-by-one), which
+     * makes LKT report that selected fragments do not share the same parent — e.g. an
+     * {@code for (T x : xs) { ... }} ({@link org.eclipse.jdt.core.dom.EnhancedForStatement})
+     * must be selected as one node, not a split across the header and body.
+     */
+    private static SourceRange snapToTightestEnclosingStatement(CompilationUnit root,
+            int startOffset, int endOffset) {
+        if (root == null) {
+            return null;
+        }
+        NodeFinder finder = new NodeFinder(root, startOffset, endOffset - startOffset);
+        ASTNode cover = finder.getCoveringNode();
+        Statement best = null;
+        int bestSpan = Integer.MAX_VALUE;
+        for (ASTNode cur = cover; cur != null; cur = cur.getParent()) {
+            if (!(cur instanceof Statement st)) {
+                continue;
+            }
+            int p = st.getStartPosition();
+            int q = p + st.getLength();
+            if (p <= startOffset && q >= endOffset) {
+                int span = q - p;
+                if (span < bestSpan) {
+                    bestSpan = span;
+                    best = st;
+                }
+            }
+        }
+        if (best == null) {
+            return null;
+        }
+        // Do not snap to an entire method body — line JSON can accidentally satisfy containment
+        // after trailing-newline slack, which then makes LTK reject the huge "selection".
+        if (best instanceof Block blk && blk.getParent() instanceof MethodDeclaration) {
+            return null;
+        }
+        return new SourceRange(best.getStartPosition(), best.getLength());
     }
 
     private static int getLineStartOffset(String source, int targetLine) {

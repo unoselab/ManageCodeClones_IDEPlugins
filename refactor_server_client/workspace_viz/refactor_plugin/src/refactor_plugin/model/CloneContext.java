@@ -40,7 +40,8 @@ public class CloneContext {
 
     /**
      * Absolute file path → classid of the clone group the file was opened from.
-     * Set by CloneGraphView when the user double-clicks a source file node.
+     * Set by CloneGraphView when the user selects a clone instance (single-click),
+     * opens a source (double-click / menu), or uses “Set focus to clone group”.
      */
     public final Map<String, String> lastOpenedByFile = new HashMap<>();
 
@@ -90,6 +91,58 @@ public class CloneContext {
         }
         return workspaceRoot.isEmpty() ? fp
                 : new java.io.File(workspaceRoot, fp).getAbsolutePath();
+    }
+
+    /**
+     * Whether the editor’s absolute path refers to the same Java compilation unit as a
+     * {@code sources[].file} entry from JSON. Handles duplicate project layouts (e.g.
+     * {@code systems/camel-java/org/...} vs {@code project_target01/src/main/java/org/...})
+     * by comparing canonical {@code org/...} (or {@code com/...}) tails.
+     */
+    public boolean pathsEqualForCloneData(String editorAbsPath, String jsonRelativeFile) {
+        if (editorAbsPath == null || editorAbsPath.isBlank()
+                || jsonRelativeFile == null || jsonRelativeFile.isBlank()) {
+            return false;
+        }
+        String norm = editorAbsPath.replace('\\', '/');
+        String fp = normalizeJsonFilePath(jsonRelativeFile).replace('\\', '/');
+        String resolved = resolvePath(jsonRelativeFile).replace('\\', '/');
+        if (norm.equals(resolved)) {
+            return true;
+        }
+        if (norm.endsWith("/" + fp)) {
+            return true;
+        }
+        String keyE = canonicalJavaSourceKey(norm);
+        String keyR = canonicalJavaSourceKey(resolved);
+        return keyE != null && keyE.equals(keyR);
+    }
+
+    /**
+     * Stable key for matching the same logical Java file across different on-disk trees
+     * (Maven {@code src/main/java}, flat {@code systems/.../org}, etc.).
+     */
+    public static String canonicalJavaSourceKey(String normalizedAbsPath) {
+        if (normalizedAbsPath == null) {
+            return null;
+        }
+        String n = normalizedAbsPath.replace('\\', '/');
+        String[] markers = { "/src/main/java/", "/src/test/java/" };
+        for (String m : markers) {
+            int i = n.indexOf(m);
+            if (i >= 0) {
+                return n.substring(i + m.length());
+            }
+        }
+        int org = n.indexOf("/org/");
+        if (org >= 0) {
+            return n.substring(org + 1);
+        }
+        int com = n.indexOf("/com/");
+        if (com >= 0) {
+            return n.substring(com + 1);
+        }
+        return null;
     }
 
     /** Normalizes known bad relative paths in clone JSON (same idea as the VS Code side). */

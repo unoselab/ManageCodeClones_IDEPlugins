@@ -2,8 +2,6 @@ package refactor_plugin.listeners;
 
 import java.io.FileReader;
 import java.lang.reflect.Type;
-import java.net.URI;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -522,8 +520,13 @@ public class EditorDropStartup implements IStartup {
      * in order of specificity:
      *
      * <ol>
-     *   <li>Exact match via {@code lastOpenedByFile} (fastest — set when the
-     *       user double-clicks a source file node in the Clone Graph).</li>
+     *   <li>Clone Graph <strong>focus</strong> {@code graphFocusClassid} when it names a
+     *       group whose sites match the editor file (same-file clones under different
+     *       project roots, e.g. {@code systems/…} vs {@code project_target01/…}).</li>
+     *   <li>Exact match via {@code lastOpenedByFile} (set when the user selects or opens
+     *       a clone instance in the Clone Graph).</li>
+     *   <li>Canonical {@code org/…} match against any {@code lastOpenedByFile} key when the
+     *       editor’s absolute path string differs (e.g. workspace vs {@code systems/} copy).</li>
      *   <li>Exact resolved-path match using {@code CloneContext.resolvePath()}
      *       (works when {@code workspaceRoot} is set correctly).</li>
      *   <li>Path-suffix match — the absolute OS path always ends with the
@@ -532,19 +535,51 @@ public class EditorDropStartup implements IStartup {
      *       This is the most robust fallback and mirrors how VS Code's
      *       {@code document.uri.fsPath} always gives an absolute path that
      *       contains the relative JSON path as a suffix.</li>
+     *   <li>{@link CloneContext#pathsEqualForCloneData} — same logical {@code org/…} file
+     *       as JSON when Eclipse reports a different absolute prefix.</li>
      * </ol>
      */
     private CloneRecord findRecordForFile(String filePath) {
         if (filePath == null) { return null; }
         CloneContext ctx = CloneContext.get();
+        String fileNorm = filePath.replace('\\', '/');
+
+        // Strategy 0: explicit clone group focus from Clone Graph (single-click instance)
+        String focusCid = ctx.graphFocusClassid;
+        if (focusCid != null && !focusCid.isBlank()) {
+            CloneRecord focused = ctx.recordMap.get(focusCid);
+            if (focused != null
+                    && CloneRecordLiveExtract.isSameFileCloneRecordForEditor(focused, filePath)) {
+                return focused;
+            }
+        }
 
         // Strategy 1: exact hit from Clone Graph navigation
         String cid = ctx.lastOpenedByFile.get(filePath);
         CloneRecord found = cid != null ? ctx.recordMap.get(cid) : null;
         if (found != null) { return found; }
 
-        // Normalise separators once for strategies 2 and 3
-        String fileNorm = filePath.replace('\\', '/');
+        // Strategy 1b: same logical file as a registered path (different prefix / symlink / casing)
+        String keyEditor = CloneContext.canonicalJavaSourceKey(fileNorm);
+        if (keyEditor != null) {
+            for (var e : ctx.lastOpenedByFile.entrySet()) {
+                String k = e.getKey();
+                if (k == null || k.isBlank()) {
+                    continue;
+                }
+                String kNorm = k.replace('\\', '/');
+                if (fileNorm.equals(kNorm)) {
+                    continue;
+                }
+                String keyStored = CloneContext.canonicalJavaSourceKey(kNorm);
+                if (keyStored != null && keyEditor.equals(keyStored)) {
+                    CloneRecord byKey = ctx.recordMap.get(e.getValue());
+                    if (byKey != null) {
+                        return byKey;
+                    }
+                }
+            }
+        }
 
         for (CloneRecord r : ctx.recordMap.values()) {
             if (r.sources == null) { continue; }
@@ -561,6 +596,8 @@ public class EditorDropStartup implements IStartup {
                 //   filePath = "/…/runtime-refactor_plugin/systems/…/ExportQuarkus.java"
                 //   src.file = "systems/…/ExportQuarkus.java"
                 if (fileNorm.endsWith("/" + srcNorm)) { return r; }
+
+                if (ctx.pathsEqualForCloneData(filePath, src.file)) { return r; }
             }
         }
         return null;
@@ -568,70 +605,9 @@ public class EditorDropStartup implements IStartup {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /**
-     * Returns the absolute OS file path for the editor's input.
-     *
-     * Three strategies are tried in order:
-     *
-     * 1. {@code ILocationProvider} adapter — implemented by
-     *    {@code FileEditorInput} (Package Explorer files).  Returns the
-     *    absolute OS path via {@code IFile.getLocation()}.  This is the
-     *    primary path for files opened from the Package Explorer and was the
-     *    missing link: {@code IFileEditorInput.getAdapter(IPath.class)}
-     *    returns {@code null}, so the previous IPath-first logic always fell
-     *    through to {@code null} for those files.
-     *
-     * 2. {@code IPath} adapter — works for {@code IFileStoreEditorInput}
-     *    (EFS / external files, e.g. opened by CloneGraphView).  Uses
-     *    {@code makeRelative()} before {@code IPath.append()} to prevent
-     *    the silent "absolute IPath passed to append() returns itself" bug.
-     *
-     * 3. {@code URI} adapter — generic fallback.
-     */
+    /** @see CloneRecordLiveExtract#absoluteFilePathForEditor(ITextEditor) */
     private String getEditorFilePath(ITextEditor editor) {
-        var input = editor.getEditorInput();
-
-        // ── Strategy 1: reflective IFileEditorInput path ─────────────────────
-        // FileEditorInput (Package Explorer files) exposes getFile() → IFile,
-        // and IFile.getLocation() returns the absolute OS IPath.
-        // We call both methods reflectively to avoid a compile-time dependency
-        // on org.eclipse.core.resources (IFile is defined there), while still
-        // getting the absolute OS path that IFile.getLocation() provides.
-        try {
-            java.lang.reflect.Method getFile = input.getClass().getMethod("getFile");
-            Object iFile = getFile.invoke(input);
-            if (iFile != null) {
-                java.lang.reflect.Method getLoc = iFile.getClass().getMethod("getLocation");
-                Object loc = getLoc.invoke(iFile);
-                if (loc instanceof org.eclipse.core.runtime.IPath p && !p.isEmpty()) {
-                    return p.toOSString();
-                }
-            }
-        } catch (Exception ignored) { /* not an IFileEditorInput — try next strategy */ }
-
-        // ── Strategy 2: IPath adapter (EFS / external files) ─────────────────
-        var ipath = input.getAdapter(org.eclipse.core.runtime.IPath.class);
-        if (ipath != null) {
-            String s = ipath.toOSString();
-            if (new java.io.File(s).exists()) { return s; }
-            // Workspace-relative IPath has a leading '/'.  IPath.append() treats
-            // any IPath whose isAbsolute()==true as absolute and returns it
-            // unchanged.  makeRelative() strips the leading separator first.
-            org.eclipse.core.runtime.IPath wsLoc =
-                    org.eclipse.core.runtime.Platform.getLocation();
-            if (wsLoc != null) {
-                return wsLoc.append(ipath.makeRelative()).toOSString();
-            }
-            return s;
-        }
-
-        // ── Strategy 3: URI adapter ───────────────────────────────────────────
-        try {
-            URI uri = input.getAdapter(URI.class);
-            if (uri != null) { return Paths.get(uri).toString(); }
-        } catch (Exception ignored) {}
-
-        return null;
+        return CloneRecordLiveExtract.absoluteFilePathForEditor(editor);
     }
 
     private String detectLanguage(ITextEditor editor) {
